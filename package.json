@@ -1,0 +1,96 @@
+{
+  "name": "abb-rws-vscode",
+  "displayName": "ABB Robot (RWS)",
+  "description": "Monitor and control ABB IRC5 robots via Robot Web Services — live status, joint positions, RAPID execution and module management.",
+  "version": "0.2.0",
+  "publisher": "merajsafari",
+  "author": { "name": "Meraj Safari" },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/merajsafari/abb-rws-vscode"
+  },
+  "keywords": ["ABB", "robot", "IRC5", "RWS", "RAPID", "automation"],
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "icon": "media/icon.png",
+  "galleryBanner": { "color": "#1e1e2e", "theme": "dark" },
+  "contributes": {
+    "configuration": {
+      "title": "ABB Robot",
+      "properties": {
+        "abbRobot.host": {
+          "type": "string",
+          "default": "192.168.125.1",
+          "description": "IRC5 controller IP address or hostname"
+        },
+        "abbRobot.username": {
+          "type": "string",
+          "default": "Default User",
+          "description": "RWS username"
+        },
+        "abbRobot.password": {
+          "type": "string",
+          "default": "robotics",
+          "description": "RWS password"
+        },
+        "abbRobot.refreshInterval": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 200,
+          "description": "Status polling interval in milliseconds"
+        }
+      }
+    },
+    "commands": [
+      { "command": "abbRobot.connect",        "title": "Connect",                    "category": "ABB Robot", "icon": "$(plug)" },
+      { "command": "abbRobot.disconnect",     "title": "Disconnect",                 "category": "ABB Robot", "icon": "$(debug-disconnect)" },
+      { "command": "abbRobot.startRapid",     "title": "Start RAPID",                "category": "ABB Robot", "icon": "$(play)" },
+      { "command": "abbRobot.stopRapid",      "title": "Stop RAPID",                 "category": "ABB Robot", "icon": "$(debug-stop)" },
+      { "command": "abbRobot.resetRapid",     "title": "PP to Main",                 "category": "ABB Robot", "icon": "$(debug-restart)" },
+      { "command": "abbRobot.ppToMain",       "title": "PP to Main",                 "category": "ABB Robot", "icon": "$(debug-restart)" },
+      { "command": "abbRobot.refresh",        "title": "Refresh",                    "category": "ABB Robot", "icon": "$(refresh)" },
+      { "command": "abbRobot.uploadModule",   "title": "Load Program from File…",    "category": "ABB Robot", "icon": "$(cloud-upload)" },
+      { "command": "abbRobot.downloadModule", "title": "Download Module to File",    "category": "ABB Robot", "icon": "$(cloud-download)" },
+      { "command": "abbRobot.configure",      "title": "Configure Connection…",      "category": "ABB Robot", "icon": "$(settings-gear)" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "abbRobot", "title": "ABB Robot", "icon": "media/robot.svg" }
+      ]
+    },
+    "views": {
+      "abbRobot": [
+        { "id": "abbRobot.status",  "name": "Controller Status" },
+        { "id": "abbRobot.modules", "name": "Program" },
+        { "id": "abbRobot.rapid",   "name": "RAPID" },
+        { "id": "abbRobot.motion",  "name": "Motion" }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        { "command": "abbRobot.connect",      "when": "view == abbRobot.status && !abbRobot.connected", "group": "navigation@1" },
+        { "command": "abbRobot.disconnect",   "when": "view == abbRobot.status && abbRobot.connected",  "group": "navigation@1" },
+        { "command": "abbRobot.refresh",      "when": "view == abbRobot.status && abbRobot.connected",  "group": "navigation@2" },
+        { "command": "abbRobot.uploadModule", "when": "view == abbRobot.modules && abbRobot.connected", "group": "navigation@1" },
+        { "command": "abbRobot.configure",    "when": "view == abbRobot.status",                         "group": "navigation@3" }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch",
+    "package": "npx vsce package"
+  },
+  "dependencies": {
+    "abb-rws-client": "^0.1.9"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.4.0"
+  }
+}

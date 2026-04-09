@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Background -->
+  <rect width="128" height="128" rx="20" fill="#1e1e2e"/>
+
+  <!-- Base platform -->
+  <rect x="18" y="98" width="92" height="12" rx="4" fill="#3a3a5c"/>
+  <rect x="26" y="94" width="76" height="8" rx="3" fill="#4a4a6c"/>
+
+  <!-- Robot arm - lower segment -->
+  <rect x="58" y="60" width="14" height="38" rx="5" fill="#5a7a9a"/>
+
+  <!-- Joint 1 (base rotation) -->
+  <circle cx="65" cy="62" r="10" fill="#2d5a7a" stroke="#4a9aca" stroke-width="2"/>
+  <circle cx="65" cy="62" r="4" fill="#4a9aca"/>
+
+  <!-- Robot arm - upper segment (angled) -->
+  <rect x="60" y="22" width="12" height="44" rx="5"
+        transform="rotate(25 65 62)" fill="#4a7a9a"/>
+
+  <!-- Joint 2 (elbow) -->
+  <circle cx="79" cy="36" r="8" fill="#2d5a7a" stroke="#4a9aca" stroke-width="2"/>
+  <circle cx="79" cy="36" r="3" fill="#4a9aca"/>
+
+  <!-- TCP / tool -->
+  <circle cx="94" cy="20" r="7" fill="#e8a020" stroke="#ffcc44" stroke-width="1.5"/>
+  <circle cx="94" cy="20" r="3" fill="#ffcc44"/>
+
+  <!-- Status LED -->
+  <circle cx="30" cy="104" r="4" fill="#4ec94e"/>
+  <circle cx="30" cy="104" r="2" fill="#a0ffa0"/>
+
+  <!-- Label: RWS -->
+  <text x="64" y="120" font-family="monospace" font-size="9" font-weight="bold"
+        fill="#6a9aba" text-anchor="middle" letter-spacing="2">RWS</text>
+</svg>
