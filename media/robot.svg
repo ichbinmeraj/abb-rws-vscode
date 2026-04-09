@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none">
+  <!-- Robot arm base -->
+  <rect x="2" y="12" width="12" height="2" rx="1" fill="#C5C5C5"/>
+  <!-- Arm segment 1 (vertical) -->
+  <rect x="6.5" y="7" width="3" height="5" rx="1" fill="#C5C5C5"/>
+  <!-- Joint circle -->
+  <circle cx="8" cy="7" r="2" fill="#4EC94E" stroke="#C5C5C5" stroke-width="0.5"/>
+  <!-- Arm segment 2 (angled upper) -->
+  <rect x="7" y="2" width="2.5" height="5.5" rx="1" transform="rotate(-30 8 7)" fill="#C5C5C5"/>
+  <!-- TCP dot -->
+  <circle cx="11" cy="3" r="1.2" fill="#1E8BC3"/>
+</svg>
