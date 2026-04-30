@@ -6,7 +6,7 @@
   "publisher": "merajsafari",
   "author": { "name": "Meraj Safari" },
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/merajsafari/abb-rws-vscode" },
+  "repository": { "type": "git", "url": "https://github.com/ichbinmeraj/abb-rws-vscode" },
   "keywords": ["ABB", "robot", "IRC5", "RWS", "RAPID", "automation"],
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other"],
