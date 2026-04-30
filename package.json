@@ -2,7 +2,7 @@
   "name": "abb-rws",
   "displayName": "ABB Robots (RWS)",
   "description": "Monitor and control ABB IRC5 robots via Robot Web Services — full RWS 1.0 surface: status, motion, RAPID, I/O, event log, file system.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "publisher": "merajsafari",
   "author": { "name": "Meraj Safari" },
   "license": "MIT",
