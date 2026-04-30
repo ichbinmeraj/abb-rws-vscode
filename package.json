@@ -1,15 +1,12 @@
 {
-  "name": "abb-rws-vscode",
-  "displayName": "ABB Robot (RWS)",
-  "description": "Monitor and control ABB IRC5 robots via Robot Web Services — live status, joint positions, RAPID execution and module management.",
-  "version": "0.2.0",
+  "name": "abb-rws",
+  "displayName": "ABB Robots (RWS)",
+  "description": "Monitor and control ABB IRC5 robots via Robot Web Services — full RWS 1.0 surface: status, motion, RAPID, I/O, event log, file system.",
+  "version": "0.6.0",
   "publisher": "merajsafari",
   "author": { "name": "Meraj Safari" },
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/merajsafari/abb-rws-vscode"
-  },
+  "repository": { "type": "git", "url": "https://github.com/merajsafari/abb-rws-vscode" },
   "keywords": ["ABB", "robot", "IRC5", "RWS", "RAPID", "automation"],
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other"],
@@ -21,40 +18,43 @@
     "configuration": {
       "title": "ABB Robot",
       "properties": {
-        "abbRobot.host": {
-          "type": "string",
-          "default": "192.168.125.1",
-          "description": "IRC5 controller IP address or hostname"
-        },
-        "abbRobot.username": {
-          "type": "string",
-          "default": "Default User",
-          "description": "RWS username"
-        },
-        "abbRobot.password": {
-          "type": "string",
-          "default": "robotics",
-          "description": "RWS password"
-        },
-        "abbRobot.refreshInterval": {
-          "type": "number",
-          "default": 1000,
-          "minimum": 200,
-          "description": "Status polling interval in milliseconds"
-        }
+        "abbRobot.host":            { "type": "string", "default": "192.168.125.1", "description": "IRC5 controller IP address or hostname" },
+        "abbRobot.username":        { "type": "string", "default": "Default User",  "description": "RWS username" },
+        "abbRobot.password":        { "type": "string", "default": "robotics",      "description": "RWS password" },
+        "abbRobot.refreshInterval": { "type": "number", "default": 1000, "minimum": 200, "description": "Status polling interval in milliseconds" }
       }
     },
     "commands": [
-      { "command": "abbRobot.connect",        "title": "Connect",                    "category": "ABB Robot", "icon": "$(plug)" },
-      { "command": "abbRobot.disconnect",     "title": "Disconnect",                 "category": "ABB Robot", "icon": "$(debug-disconnect)" },
-      { "command": "abbRobot.startRapid",     "title": "Start RAPID",                "category": "ABB Robot", "icon": "$(play)" },
-      { "command": "abbRobot.stopRapid",      "title": "Stop RAPID",                 "category": "ABB Robot", "icon": "$(debug-stop)" },
-      { "command": "abbRobot.resetRapid",     "title": "PP to Main",                 "category": "ABB Robot", "icon": "$(debug-restart)" },
-      { "command": "abbRobot.ppToMain",       "title": "PP to Main",                 "category": "ABB Robot", "icon": "$(debug-restart)" },
-      { "command": "abbRobot.refresh",        "title": "Refresh",                    "category": "ABB Robot", "icon": "$(refresh)" },
-      { "command": "abbRobot.uploadModule",   "title": "Load Program from File…",    "category": "ABB Robot", "icon": "$(cloud-upload)" },
-      { "command": "abbRobot.downloadModule", "title": "Download Module to File",    "category": "ABB Robot", "icon": "$(cloud-download)" },
-      { "command": "abbRobot.configure",      "title": "Configure Connection…",      "category": "ABB Robot", "icon": "$(settings-gear)" }
+      { "command": "abbRobot.connect",              "title": "Connect",                       "category": "ABB Robot", "icon": "$(plug)" },
+      { "command": "abbRobot.disconnect",           "title": "Disconnect",                    "category": "ABB Robot", "icon": "$(debug-disconnect)" },
+      { "command": "abbRobot.startRapid",           "title": "Start RAPID",                   "category": "ABB Robot", "icon": "$(play)" },
+      { "command": "abbRobot.stopRapid",            "title": "Stop RAPID",                    "category": "ABB Robot", "icon": "$(debug-stop)" },
+      { "command": "abbRobot.resetRapid",           "title": "PP to Main",                    "category": "ABB Robot", "icon": "$(debug-restart)" },
+      { "command": "abbRobot.ppToMain",             "title": "PP to Main",                    "category": "ABB Robot", "icon": "$(debug-restart)" },
+      { "command": "abbRobot.refresh",              "title": "Refresh",                       "category": "ABB Robot", "icon": "$(refresh)" },
+      { "command": "abbRobot.uploadModule",         "title": "Load Program from File…",       "category": "ABB Robot", "icon": "$(cloud-upload)" },
+      { "command": "abbRobot.downloadModule",       "title": "Download Module to File",       "category": "ABB Robot", "icon": "$(cloud-download)" },
+      { "command": "abbRobot.configure",            "title": "Configure Connection…",         "category": "ABB Robot", "icon": "$(settings-gear)" },
+      { "command": "abbRobot.motorsOn",             "title": "Motors On",                     "category": "ABB Robot", "icon": "$(zap)" },
+      { "command": "abbRobot.motorsOff",            "title": "Motors Off",                    "category": "ABB Robot", "icon": "$(debug-stop)" },
+      { "command": "abbRobot.setSpeedRatio",        "title": "Set Speed Ratio…",              "category": "ABB Robot", "icon": "$(dashboard)" },
+      { "command": "abbRobot.readVariable",         "title": "Read RAPID Variable…",          "category": "ABB Robot", "icon": "$(symbol-variable)" },
+      { "command": "abbRobot.writeVariable",        "title": "Write RAPID Variable…",         "category": "ABB Robot", "icon": "$(edit)" },
+      { "command": "abbRobot.refreshElog",          "title": "Refresh Event Log",             "category": "ABB Robot", "icon": "$(refresh)" },
+      { "command": "abbRobot.refreshFiles",         "title": "Refresh File Browser",          "category": "ABB Robot", "icon": "$(refresh)" },
+      { "command": "abbRobot.downloadControllerFile", "title": "Download File from Controller", "category": "ABB Robot", "icon": "$(cloud-download)" },
+      { "command": "abbRobot.deleteControllerFile",   "title": "Delete File from Controller",    "category": "ABB Robot", "icon": "$(trash)" },
+      { "command": "abbRobot.createDirectory",        "title": "Create Directory on Controller", "category": "ABB Robot", "icon": "$(new-folder)" },
+      { "command": "abbRobot.clearEventLog",          "title": "Clear Event Log",                "category": "ABB Robot", "icon": "$(clear-all)" },
+      { "command": "abbRobot.readSymbolProperties",   "title": "Read RAPID Symbol Properties…",  "category": "ABB Robot", "icon": "$(info)" },
+      { "command": "abbRobot.setExecutionCycle",      "title": "Set Execution Cycle…",           "category": "ABB Robot", "icon": "$(sync)" },
+      { "command": "abbRobot.getUiInstruction",       "title": "Get Active UI Instruction",      "category": "ABB Robot", "icon": "$(comment-discussion)" },
+      { "command": "abbRobot.restartController",      "title": "Restart Controller…",            "category": "ABB Robot", "icon": "$(refresh)" },
+      { "command": "abbRobot.getControllerClock",     "title": "Read Controller Clock",          "category": "ABB Robot", "icon": "$(clock)" },
+      { "command": "abbRobot.searchSymbols",          "title": "Search RAPID Symbols…",         "category": "ABB Robot", "icon": "$(search)" },
+      { "command": "abbRobot.refreshIo",              "title": "Refresh I/O Signals",            "category": "ABB Robot", "icon": "$(refresh)" },
+      { "command": "abbRobot.writeSignal",            "title": "Write Signal Value…",            "category": "ABB Robot", "icon": "$(edit)" },
+      { "command": "abbRobot.toggleSignal",           "title": "Toggle Signal",                  "category": "ABB Robot", "icon": "$(zap)" }
     ],
     "viewsContainers": {
       "activitybar": [
@@ -66,16 +66,39 @@
         { "id": "abbRobot.status",  "name": "Controller Status" },
         { "id": "abbRobot.modules", "name": "Program" },
         { "id": "abbRobot.rapid",   "name": "RAPID" },
-        { "id": "abbRobot.motion",  "name": "Motion" }
+        { "id": "abbRobot.motion",  "name": "Motion" },
+        { "id": "abbRobot.elog",    "name": "Event Log" },
+        { "id": "abbRobot.files",   "name": "Controller Files ($HOME)" },
+        { "id": "abbRobot.io",      "name": "I/O Signals" }
       ]
     },
     "menus": {
       "view/title": [
-        { "command": "abbRobot.connect",      "when": "view == abbRobot.status && !abbRobot.connected", "group": "navigation@1" },
-        { "command": "abbRobot.disconnect",   "when": "view == abbRobot.status && abbRobot.connected",  "group": "navigation@1" },
-        { "command": "abbRobot.refresh",      "when": "view == abbRobot.status && abbRobot.connected",  "group": "navigation@2" },
-        { "command": "abbRobot.uploadModule", "when": "view == abbRobot.modules && abbRobot.connected", "group": "navigation@1" },
-        { "command": "abbRobot.configure",    "when": "view == abbRobot.status",                         "group": "navigation@3" }
+        { "command": "abbRobot.connect",        "when": "view == abbRobot.status && !abbRobot.connected", "group": "navigation@1" },
+        { "command": "abbRobot.disconnect",     "when": "view == abbRobot.status && abbRobot.connected",  "group": "navigation@1" },
+        { "command": "abbRobot.refresh",        "when": "view == abbRobot.status && abbRobot.connected",  "group": "navigation@2" },
+        { "command": "abbRobot.configure",      "when": "view == abbRobot.status",                         "group": "navigation@3" },
+        { "command": "abbRobot.uploadModule",   "when": "view == abbRobot.modules && abbRobot.connected",  "group": "navigation@1" },
+        { "command": "abbRobot.readVariable",   "when": "view == abbRobot.rapid && abbRobot.connected",    "group": "navigation@1" },
+        { "command": "abbRobot.writeVariable",  "when": "view == abbRobot.rapid && abbRobot.connected",    "group": "navigation@2" },
+        { "command": "abbRobot.refreshElog",          "when": "view == abbRobot.elog && abbRobot.connected",   "group": "navigation@1" },
+        { "command": "abbRobot.clearEventLog",        "when": "view == abbRobot.elog && abbRobot.connected",   "group": "navigation@2" },
+        { "command": "abbRobot.refreshFiles",         "when": "view == abbRobot.files && abbRobot.connected",  "group": "navigation@1" },
+        { "command": "abbRobot.createDirectory",      "when": "view == abbRobot.files && abbRobot.connected",  "group": "navigation@2" },
+        { "command": "abbRobot.readSymbolProperties", "when": "view == abbRobot.rapid && abbRobot.connected",  "group": "navigation@3" },
+        { "command": "abbRobot.setExecutionCycle",    "when": "view == abbRobot.rapid && abbRobot.connected",  "group": "navigation@4" },
+        { "command": "abbRobot.searchSymbols",        "when": "view == abbRobot.rapid && abbRobot.connected",  "group": "navigation@5" },
+        { "command": "abbRobot.getUiInstruction",     "when": "view == abbRobot.rapid && abbRobot.connected",  "group": "navigation@6" },
+        { "command": "abbRobot.getControllerClock",   "when": "view == abbRobot.status && abbRobot.connected", "group": "navigation@4" },
+        { "command": "abbRobot.restartController",    "when": "view == abbRobot.status && abbRobot.connected", "group": "navigation@5" },
+        { "command": "abbRobot.refreshIo",            "when": "view == abbRobot.io && abbRobot.connected",     "group": "navigation@1" },
+        { "command": "abbRobot.writeSignal",          "when": "view == abbRobot.io && abbRobot.connected",     "group": "navigation@2" }
+      ],
+      "view/item/context": [
+        { "command": "abbRobot.downloadControllerFile", "when": "viewItem == controllerFile", "group": "inline@1" },
+        { "command": "abbRobot.deleteControllerFile",   "when": "viewItem == controllerFile",  "group": "inline@2" },
+        { "command": "abbRobot.writeSignal",            "when": "viewItem == signalWritable",  "group": "inline@1" },
+        { "command": "abbRobot.toggleSignal",           "when": "viewItem == signalWritable",  "group": "inline@2" }
       ]
     }
   },
@@ -85,7 +108,7 @@
     "package": "npx vsce package"
   },
   "dependencies": {
-    "abb-rws-client": "^0.1.9"
+    "abb-rws-client": "file:../abb-rws-client/abb-rws-client-0.5.0.tgz"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

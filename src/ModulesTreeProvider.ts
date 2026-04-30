@@ -45,13 +45,29 @@ export class ModulesTreeProvider implements vscode.TreeDataProvider<Item> {
       `Controller: ${ctrlstate}  |  Mode: ${opmode}  |  RAPID: ${execstate}`,
     ));
 
-    if (!motorOn) {
+    if (!motorOn && isAuto) {
+      items.push(new Item(
+        'Motors On',
+        'enable motors remotely (AUTO mode)',
+        'zap',
+        { title: 'Motors On', command: 'abbRobot.motorsOn' },
+        'Request motors on via RWS. Only works in AUTO mode.\nIf this fails, use the FlexPendant.',
+      ));
+    } else if (!motorOn) {
       items.push(new Item(
         'Enable Motors on FlexPendant first',
-        '',
+        `mode: ${opmode}`,
         'warning',
         undefined,
-        'Press the Motors On button on the FlexPendant or enable in the Production Window',
+        'Switch to AUTO mode on the FlexPendant, then motors can be enabled remotely.',
+      ));
+    } else {
+      items.push(new Item(
+        'Motors Off',
+        '',
+        'debug-stop',
+        { title: 'Motors Off', command: 'abbRobot.motorsOff' },
+        'Turn motors off via RWS',
       ));
     }
 

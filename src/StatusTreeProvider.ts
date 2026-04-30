@@ -56,13 +56,32 @@ export class StatusTreeProvider implements vscode.TreeDataProvider<Item> {
       init:                'Initialising',
     }[s.ctrlstate ?? ''] ?? (s.ctrlstate ?? '—');
 
+    const speedLabel = s.speedRatio !== null ? `${s.speedRatio}%` : '—';
+    const rwVersion = s.systemInfo?.rwVersion ?? '—';
+    const ctrlName = s.identity?.name ?? s.host;
+
+    const coldetLabel = s.coldetstate !== null
+      ? ({ INIT: 'OK', TRIGGERED: 'Triggered!', CONFIRMED: 'Confirmed', TRIGGERED_ACK: 'Acknowledged' }[s.coldetstate] ?? s.coldetstate)
+      : null;
+    const coldetIcon = s.coldetstate === 'INIT' ? 'shield' : s.coldetstate !== null ? 'warning' : null;
+
     const items: Item[] = [
-      new Item('Host',            s.host,         'remote',       undefined, `Connected to ${s.host}`),
+      new Item('Host',            ctrlName,        'remote',       undefined,
+        `Connected to ${s.host}\nController: ${ctrlName}\nRobotWare: ${rwVersion}`),
+      new Item('RobotWare',       rwVersion,       'versions',     undefined, `System: ${s.systemInfo?.sysid ?? '—'}`),
       new Item('Controller',      ctrlLabel,       ctrlIcon,       undefined, `Controller state: ${s.ctrlstate}`),
       new Item('Operation Mode',  s.opmode ?? '—', modeIcon,       undefined, `Mode: ${s.opmode}`),
+      new Item('Speed Ratio',     speedLabel,      'dashboard',
+        { title: 'Set Speed Ratio', command: 'abbRobot.setSpeedRatio' },
+        'Click to change speed ratio (0–100%). Only works in AUTO mode.'),
       new Item('RAPID',           s.execstate === 'running' ? 'Running' : 'Stopped',
                                                    execIcon,       undefined, `Execution state: ${s.execstate}`),
     ];
+
+    if (coldetLabel !== null && coldetIcon !== null) {
+      items.push(new Item('Collision Detection', coldetLabel, coldetIcon, undefined,
+        `Collision detection state: ${s.coldetstate}`));
+    }
 
     if (s.tasks.length > 0) {
       items.push(new Item('', '', 'blank'));
