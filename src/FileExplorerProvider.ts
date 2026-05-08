@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { RobotManager } from './RobotManager';
+import type { RobotManager } from 'abb-rws-client';
 import type { FileEntry } from 'abb-rws-client';
 
 export interface FileNode {

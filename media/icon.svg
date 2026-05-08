@@ -1,50 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <defs>
-    <linearGradient id="armGrad" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#E85500"/>
-      <stop offset="100%" stop-color="#FF8C3A"/>
-    </linearGradient>
-    <radialGradient id="jointGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#FF8C3A"/>
-      <stop offset="100%" stop-color="#E85500"/>
-    </radialGradient>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#12121F"/>
-      <stop offset="100%" stop-color="#0A0A14"/>
-    </linearGradient>
-    <radialGradient id="tcpGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#FFD080"/>
-      <stop offset="60%" stop-color="#FF8C3A"/>
-      <stop offset="100%" stop-color="#E85500" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-  <rect width="128" height="128" rx="20" fill="url(#bgGrad)"/>
-  <rect x="1.5" y="1.5" width="125" height="125" rx="19" fill="none" stroke="#1E1E3A" stroke-width="1"/>
-  <rect x="16" y="106" width="60" height="8" rx="4" fill="#1A1A30"/>
-  <rect x="24" y="102" width="44" height="8" rx="4" fill="#20203A"/>
-  <circle cx="46" cy="102" r="13" fill="#0D0D1A" stroke="url(#armGrad)" stroke-width="2.5"/>
-  <circle cx="46" cy="102" r="6" fill="url(#jointGlow)"/>
-  <line x1="46" y1="102" x2="36" y2="62" stroke="#C04400" stroke-width="15" stroke-linecap="round" opacity="0.4"/>
-  <line x1="46" y1="102" x2="36" y2="62" stroke="url(#armGrad)" stroke-width="12" stroke-linecap="round"/>
-  <line x1="46" y1="100" x2="37" y2="64" stroke="#FF9A50" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
-  <circle cx="36" cy="62" r="11" fill="#0D0D1A" stroke="url(#armGrad)" stroke-width="2.5"/>
-  <circle cx="36" cy="62" r="5" fill="url(#jointGlow)"/>
-  <line x1="36" y1="62" x2="74" y2="36" stroke="#C04400" stroke-width="14" stroke-linecap="round" opacity="0.4"/>
-  <line x1="36" y1="62" x2="74" y2="36" stroke="url(#armGrad)" stroke-width="11" stroke-linecap="round"/>
-  <line x1="36" y1="61" x2="74" y2="35" stroke="#FF9A50" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
-  <circle cx="74" cy="36" r="11" fill="#0D0D1A" stroke="url(#armGrad)" stroke-width="2.5"/>
-  <circle cx="74" cy="36" r="5" fill="url(#jointGlow)"/>
-  <line x1="74" y1="36" x2="96" y2="18" stroke="#C04400" stroke-width="11" stroke-linecap="round" opacity="0.4"/>
-  <line x1="74" y1="36" x2="96" y2="18" stroke="url(#armGrad)" stroke-width="8" stroke-linecap="round"/>
-  <line x1="74" y1="35" x2="96" y2="17" stroke="#FF9A50" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
-  <circle cx="96" cy="18" r="10" fill="url(#tcpGlow)" opacity="0.6"/>
-  <circle cx="96" cy="18" r="7" fill="#0D0D1A" stroke="#FF8C3A" stroke-width="2"/>
-  <circle cx="96" cy="18" r="3.5" fill="#FFD080"/>
-  <path d="M 90 108 Q 104 94 118 108" stroke="#00CFFF" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.85"/>
-  <path d="M 94 112 Q 104 101 114 112" stroke="#00CFFF" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.75"/>
-  <path d="M 98 116 Q 104 109 110 116" stroke="#00CFFF" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.65"/>
-  <circle cx="104" cy="119" r="3" fill="#00CFFF" opacity="0.9"/>
-  <circle cx="22" cy="118" r="5" fill="#00FF88" opacity="0.15"/>
-  <circle cx="22" cy="118" r="3.5" fill="#00FF88"/>
-  <circle cx="21" cy="117" r="1.5" fill="#AAFFCC" opacity="0.8"/>
+<?xml version="1.0" encoding="UTF-8"?>
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect x="0" y="0" width="128" height="128" rx="28" ry="28" fill="#ff000f"></rect>
+  <g fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    
+    <path d="M 36 26 L 36 102"></path>
+    
+    <path d="M 36 26 L 74 26 A 18 18 0 0 1 74 62 L 36 62"></path>
+    
+    <path d="M 68 62 L 86 92"></path>
+    
+    <path d="M 36 102 L 96 102"></path>
+  </g>
 </svg>

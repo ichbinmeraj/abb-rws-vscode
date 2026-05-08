@@ -1,0 +1,173 @@
+{
+  "Module skeleton": {
+    "prefix": "module",
+    "body": [
+      "MODULE ${1:ModuleName}",
+      "\t",
+      "\tPROC main()",
+      "\t\t$0",
+      "\tENDPROC",
+      "\t",
+      "ENDMODULE"
+    ],
+    "description": "Empty MODULE / ENDMODULE skeleton with a main procedure"
+  },
+  "Procedure": {
+    "prefix": "proc",
+    "body": [
+      "PROC ${1:procedureName}(${2:})",
+      "\t$0",
+      "ENDPROC"
+    ],
+    "description": "PROC … ENDPROC"
+  },
+  "Function": {
+    "prefix": "func",
+    "body": [
+      "FUNC ${1:num} ${2:functionName}(${3:})",
+      "\t$0",
+      "\tRETURN ${4:result};",
+      "ENDFUNC"
+    ],
+    "description": "FUNC … RETURN … ENDFUNC"
+  },
+  "Trap routine": {
+    "prefix": "trap",
+    "body": [
+      "TRAP ${1:trapName}",
+      "\t$0",
+      "ENDTRAP"
+    ],
+    "description": "TRAP … ENDTRAP"
+  },
+  "IF / ELSE / ENDIF": {
+    "prefix": "if",
+    "body": [
+      "IF ${1:condition} THEN",
+      "\t$0",
+      "ELSE",
+      "\t",
+      "ENDIF"
+    ],
+    "description": "IF … ELSE … ENDIF"
+  },
+  "WHILE loop": {
+    "prefix": "while",
+    "body": [
+      "WHILE ${1:condition} DO",
+      "\t$0",
+      "ENDWHILE"
+    ],
+    "description": "WHILE … ENDWHILE"
+  },
+  "FOR loop": {
+    "prefix": "for",
+    "body": [
+      "FOR ${1:i} FROM ${2:1} TO ${3:10} DO",
+      "\t$0",
+      "ENDFOR"
+    ],
+    "description": "FOR … FROM … TO … ENDFOR"
+  },
+  "TEST / CASE switch": {
+    "prefix": "test",
+    "body": [
+      "TEST ${1:expression}",
+      "CASE ${2:value}:",
+      "\t$0",
+      "DEFAULT:",
+      "\t",
+      "ENDTEST"
+    ],
+    "description": "TEST … CASE … DEFAULT … ENDTEST"
+  },
+  "MoveJ": {
+    "prefix": "movej",
+    "body": [
+      "MoveJ ${1:p10}, ${2:v1000}, ${3:z10}, ${4:tool0}\\WObj:=${5:wobj0};"
+    ],
+    "description": "MoveJ — joint-interpolated move"
+  },
+  "MoveL": {
+    "prefix": "movel",
+    "body": [
+      "MoveL ${1:p10}, ${2:v1000}, ${3:z10}, ${4:tool0}\\WObj:=${5:wobj0};"
+    ],
+    "description": "MoveL — linear move"
+  },
+  "MoveAbsJ": {
+    "prefix": "moveabsj",
+    "body": [
+      "MoveAbsJ ${1:jt0}\\NoEOffs, ${2:v1000}, ${3:fine}, ${4:tool0};"
+    ],
+    "description": "MoveAbsJ — absolute joint move"
+  },
+  "robtarget declaration": {
+    "prefix": "robtarget",
+    "body": [
+      "CONST robtarget ${1:p10}:=[[${2:0},${3:0},${4:0}],[${5:1},0,0,0],[0,0,0,0],[9E9,9E9,9E9,9E9,9E9,9E9]];"
+    ],
+    "description": "Declare a robtarget constant"
+  },
+  "jointtarget declaration": {
+    "prefix": "jointtarget",
+    "body": [
+      "CONST jointtarget ${1:jt0}:=[[${2:0},${3:0},${4:0},${5:0},${6:30},${7:0}],[9E9,9E9,9E9,9E9,9E9,9E9]];"
+    ],
+    "description": "Declare a jointtarget constant"
+  },
+  "WaitDI signal high": {
+    "prefix": "waitdi",
+    "body": [
+      "WaitDI ${1:signal}, ${2:1};"
+    ],
+    "description": "Wait for a digital input"
+  },
+  "SetDO": {
+    "prefix": "setdo",
+    "body": [
+      "SetDO ${1:signal}, ${2:1};"
+    ],
+    "description": "Set a digital output"
+  },
+  "TPWrite": {
+    "prefix": "tpwrite",
+    "body": [
+      "TPWrite \"${1:message}\";"
+    ],
+    "description": "Print to FlexPendant"
+  },
+  "Error handler": {
+    "prefix": "errorhandler",
+    "body": [
+      "ERROR",
+      "\tIF ERRNO=${1:ERR_NO_PROGRAM} THEN",
+      "\t\tTPWrite \"${2:error message}\";",
+      "\t\tTRYNEXT;",
+      "\tENDIF",
+      "\tRAISE;"
+    ],
+    "description": "ERROR handler block (place after ENDPROC body)"
+  },
+  "Variable declaration": {
+    "prefix": "var",
+    "body": [
+      "VAR ${1:num} ${2:variableName}${3::=${4:0}};"
+    ],
+    "description": "VAR declaration"
+  },
+  "Persistent declaration": {
+    "prefix": "pers",
+    "body": [
+      "PERS ${1:num} ${2:variableName}${3::=${4:0}};"
+    ],
+    "description": "PERS (persistent) declaration"
+  },
+  "Constant declaration": {
+    "prefix": "const",
+    "body": [
+      "CONST ${1:num} ${2:CONST_NAME}:=${3:0};"
+    ],
+    "description": "CONST declaration"
+  }
+}

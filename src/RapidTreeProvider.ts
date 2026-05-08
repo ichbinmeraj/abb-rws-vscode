@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { RobotManager } from './RobotManager';
+import type { RobotManager } from 'abb-rws-client';
 
 class Item extends vscode.TreeItem {
   constructor(label: string, value: string, icon: string, command?: vscode.Command, tooltip?: string) {

@@ -1,0 +1,41 @@
+# Source — only the bundled dist/extension.js ships
+src/**
+tsconfig.json
+build.js
+
+# Tests, probes, scratch — internal dev tools
+test-*.js
+test-*.cjs
+test-*.mjs
+test-*.ts
+scripts/**
+.abb-rws-extension/**
+
+# Package artifacts
+*.vsix
+abb-rws-client-*.tgz
+
+# Sample programs are shipped only as documentation references; the
+# `.controller.mod` file is an orphan from earlier dev work, exclude.
+samples/MotionTest.controller.mod
+
+# Internal docs and plans
+docs/RWS1_PARITY_PLAN.md
+
+# Repo / dev config
+.vscode/**
+.gitignore
+.gitattributes
+.eslintrc*
+eslint.config.js
+.editorconfig
+.github/**
+
+# Node.js
+node_modules/**
+package-lock.json
+
+# Misc dev artifacts
+*.log
+*.tmp
+*.bak

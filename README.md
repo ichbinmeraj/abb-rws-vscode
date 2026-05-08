@@ -1,173 +1,157 @@
-# ABB Robot (RWS) — VS Code Extension
+# RAPID Live — ABB Robotics for VS Code
 
-Monitor and control ABB IRC5 robots directly from VS Code via the **Robot Web Services (RWS 1.0)** HTTP API — no FlexPendant required for most operations.
+> The first VS Code extension that connects directly to a live ABB controller.
 
-> **Compatibility:** ABB IRC5 controllers with RobotWare 6.x only.  
-> Not compatible with OmniCore / RobotWare 7.x / RWS 2.0.
+**Live-tested on RobotWare 7.21 (OmniCore) and RobotWare 6.16 (IRC5).**
+Works against real hardware and RobotStudio virtual controllers, with both
+**RWS 1.0** (HTTP Digest, IRC5) and **RWS 2.0** (HTTPS Basic + XHTML, OmniCore)
+auto-detected from the controller's auth challenge.
 
----
-
-## Features
-
-### Controller Status
-- Live motor state, operation mode, RAPID execution state
-- Speed ratio — click to change (AUTO mode only)
-- Collision detection state (requires Collision Detection option)
-- All RAPID tasks with active/stopped state
-- RobotWare version and controller name
-- Read controller clock (UTC)
-- Restart controller — Restart / P-Start / I-Start / B-Start modes
-
-### Motion
-- Joint positions J1–J6 updated every second (degrees)
-- TCP position — Cartesian X/Y/Z (mm) and quaternion orientation
-- Robot configuration flags (shoulder / elbow / wrist)
-
-### RAPID Control
-- Start / Stop RAPID
-- PP to Main (reset program pointer)
-- Set execution cycle — Once / Forever / As Is
-- Motors On / Off (requires AUTO mode)
-- Set speed ratio 0–100%
-
-### Program Management
-- List loaded modules per task
-- **Load program from file** — full sequence: unload old modules → upload `.mod` → load → PP to Main
-- Download module from controller to disk
-
-### RAPID Variables & Symbols
-- Read any RAPID variable (task / module / symbol)
-- Write any RAPID variable with RAPID-syntax values
-- Read symbol properties — type, dimensions, storage class
-- Search symbols — filter by type (var / per / con / fun / prc) — results open in editor
-- Get active UI instruction (detect when RAPID is waiting for operator input)
-
-### I/O Signals
-- All signals loaded automatically on connect, refreshed every 5 seconds
-- Grouped by type: Digital Inputs, Digital Outputs, Analog Inputs, Analog Outputs, Group Inputs, Group Outputs
-- **Click any Digital Output** to toggle it (0 ↔ 1) instantly
-- Inline write button on all output signals (DO / AO / GO)
-- Manual refresh button
-
-### Event Log
-- Live event log from the controller (domain 0 — up to 1000 entries)
-- Severity icons: info / warning / error
-- Expandable entries with description, causes, consequences, and actions
-- Clear event log (with confirmation)
-
-### Controller File Browser
-- Browse `$HOME` directory on the controller
-- Download any file to disk
-- Delete files (with confirmation)
-- Create directories
+<!-- Screenshots coming in 0.9.3 -->
 
 ---
 
-## Quick Start
+## What it does
 
-1. Open the **ABB Robot** panel in the Activity Bar (robot arm icon on the left)
-2. Click the **gear icon** → Configure Connection → enter IP, username, password
-3. Click **Connect**
-
-The status bar at the bottom shows live motor state and RAPID execution state. All panels update automatically.
-
----
-
-## Connection Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `abbRobot.host` | `192.168.125.1` | Controller IP address or hostname |
-| `abbRobot.username` | `Default User` | RWS username |
-| `abbRobot.password` | `robotics` | RWS password |
-| `abbRobot.refreshInterval` | `1000` | Status polling interval (ms) |
+- **RAPID language server** — hover docs from the official 705-entry reference manual, autocomplete, signature help, snippets, CodeLens above every `PROC` / `FUNC` / `TRAP`, Go-to-Definition, Find References, document outline, inlay hints showing live values.
+- **Push / Pull / Diff** — `.mod` file workflow that fits in any git repo. Pull all controller modules into your workspace; edit; push back. Diff your local file against what's currently loaded.
+- **Live Cell dashboard** — joints, TCP, op-mode, exec state, speed at a glance.
+- **Tasks panel** — every RAPID task with its modules and routines. One-click run, set PP, unload. Create new tasks (writes `SYS/CAB_TASKS` in CFG).
+- **Variables Watch** — pin variables, see live values poll every 1 s.
+- **Multi-robot** — one window, many controllers, switch active in a click.
+- Plus: file system browser, I/O signal control, event log with details, CFG read+write, backup / restore, service-routine call, IK + FK, and ~90 commands covering the full RWS surface.
 
 ---
 
-## Commands
+## Quick start
 
-All commands are available via `Ctrl+Shift+P` → type **ABB Robot**:
+1. Install from the marketplace.
+2. Click the **RAPID Live** icon in the activity bar → **+ Add Robot**.
+3. The wizard auto-scans `127.0.0.1` and `192.168.125.1`. RobotStudio VCs use random ports — those are detected automatically.
+4. Default credentials: `Admin` / `robotics` (recommended; works on most controllers). Falls back to `Default User` automatically on IRC5 if `Admin` doesn't exist.
+5. Right-click your robot → **Connect**.
 
-| Command | Description |
-|---------|-------------|
-| ABB Robot: Connect | Connect to the configured controller |
-| ABB Robot: Disconnect | Disconnect |
-| ABB Robot: Configure Connection… | Set host, username, password |
-| ABB Robot: Refresh | Force immediate status refresh |
-| ABB Robot: Start RAPID | Start program execution |
-| ABB Robot: Stop RAPID | Stop program execution |
-| ABB Robot: PP to Main | Reset program pointer to main |
-| ABB Robot: Set Execution Cycle… | Once / Forever / As Is |
-| ABB Robot: Motors On | Enable motors (AUTO mode only) |
-| ABB Robot: Motors Off | Disable motors |
-| ABB Robot: Set Speed Ratio… | Set override speed 0–100% |
-| ABB Robot: Load Program from File… | Upload and load a `.mod` file |
-| ABB Robot: Download Module to File | Save a controller module to disk |
-| ABB Robot: Read RAPID Variable… | Read any RAPID variable |
-| ABB Robot: Write RAPID Variable… | Write any RAPID variable |
-| ABB Robot: Read RAPID Symbol Properties… | Introspect a symbol |
-| ABB Robot: Search RAPID Symbols… | Search by type in a task |
-| ABB Robot: Get Active UI Instruction | Check if RAPID is waiting for input |
-| ABB Robot: Refresh I/O Signals | Reload all signal values |
-| ABB Robot: Write Signal Value… | Write a DO / AO / GO signal |
-| ABB Robot: Refresh Event Log | Reload event log |
-| ABB Robot: Clear Event Log | Clear all domain 0 messages |
-| ABB Robot: Refresh File Browser | Reload $HOME directory |
-| ABB Robot: Download File from Controller | Download a file to disk |
-| ABB Robot: Delete File from Controller | Delete a file |
-| ABB Robot: Create Directory on Controller | Create a new directory |
-| ABB Robot: Read Controller Clock | Show current UTC time |
-| ABB Robot: Restart Controller… | Restart with mode selection |
+That's it — the panels populate in under 2 seconds.
 
 ---
 
-## Loading a RAPID Program
+## How it differs from other ABB extensions
 
-1. Connect to the controller (must be in AUTO mode, RAPID stopped)
-2. In the **Program** panel → click the **upload icon** (Load Program from File…)
-3. Select a `.mod` file
-4. The extension automatically:
-   - Unloads all non-system modules from the task
-   - Uploads the file to `$HOME/` on the controller
-   - Loads it into the first active task (T_ROB1)
-   - Moves the program pointer to Main
+The other ABB extensions on the marketplace are static editor enhancements — syntax highlighting, snippets, language servers. None of them connect to a controller.
 
-> The module must have a `PROC main()` for PP to Main to succeed. If not, the module is still loaded and a warning is shown.
+| Feature | RAPID Live | Other ABB extensions |
+|---|:---:|:---:|
+| Syntax highlighting + snippets | ✓ | ✓ |
+| Hover docs from the official manual | **✓** | partial |
+| **Live controller connection** | **✓** | ✗ |
+| **Live variable values inline** | **✓** | ✗ |
+| **Push / Pull / Diff** workflow | **✓** | ✗ |
+| Multi-robot management | **✓** | ✗ |
+| Real-time WebSocket subscriptions | **✓** | ✗ |
+| Module load/unload + routine drill-down | **✓** | ✗ |
+| File system + I/O + CFG access | **✓** | ✗ |
+| Event log with severity + details | **✓** | ✗ |
+| Inverse + forward kinematics | **✓** | ✗ |
+| Cross-platform (macOS / Linux) | **✓** | most no |
+| Built on a published TS RWS client | **✓** | n/a |
 
----
-
-## I/O Signals Panel
-
-The **I/O Signals** panel shows all configured signals grouped by type:
-
-- **Digital Inputs (DI)** — read-only, shown with filled/empty circle icon
-- **Digital Outputs (DO)** — click to toggle 0↔1, inline write button
-- **Analog Inputs (AI)** — read-only, shows current value
-- **Analog Outputs (AO)** — inline write button with numeric input
-- **Group Inputs (GI)** — read-only
-- **Group Outputs (GO)** — inline write button
-
-Signals refresh automatically every 5 seconds. Use the **Refresh** button in the panel title bar for immediate update.
+We don't compete with RobotStudio's 3D simulation or cell design — that's a different category. We do the **dev loop**: connect, monitor, edit, deploy, repeat.
 
 ---
 
-## Requirements
+## Live editing in the editor itself
 
-- ABB IRC5 controller with RobotWare 6.x
-- RWS 1.0 enabled on the controller (PC Interface option)
-- Network connectivity to the controller
-- RWS user with appropriate privileges (Default User is sufficient for most operations)
+Open any `.mod` / `.sys` / `.prg` file while connected and the editor lights up:
+
+- **Faded gray live values** next to every `VAR` / `PERS` / `CONST` declaration, polled every 1.5 s.
+- **Green ▶ in the gutter** at the line where the controller's program pointer is currently executing.
+- **CodeLens** above every routine: `▶ Run this routine` and `▶ Set PP here`.
+- **Hover any identifier** → reference-manual docs (705 entries) for built-ins, live controller value for user variables.
+- **Ctrl+click a routine name** → jump to its declaration anywhere in your workspace.
+
+---
+
+## Git workflow for RAPID
+
+The point of RAPID Live: edit at your desk, version-control in git, deploy to the robot. None of that flow exists in RobotStudio.
+
+```
+┌─ Pull All Modules from Controller ─┐         ┌─ Push Current File ─┐
+│                                     │         │                     │
+│   Workspace folder ←  controller   │  edit   │  workspace ── push ──→ controller
+│   (now in git)                     │ ────────│                       │
+└─────────────────────────────────────┘         └─────────────────────┘
+```
+
+- **Pull All Modules** — bulk download every loaded program module into your workspace as `.mod` files.
+- **Push Current File** — load the active `.mod` into the running task. Right-click in the editor, the title bar, or the file explorer.
+- **Diff with Controller** — VS Code's native diff editor between your local file and what's currently loaded. Read-only on the controller side, no risk of clobbering.
 
 ---
 
-## Session Management
+## Built on the open-source `abb-rws-client` package
 
-The IRC5 controller allows a maximum of **70 concurrent RWS sessions**. The extension automatically persists the session cookie across reloads so it always reuses the same session slot — avoiding the 503 errors that occur when the limit is exhausted.
+The protocol layer is published separately as **[`abb-rws-client`](https://www.npmjs.com/package/abb-rws-client)** — the only TypeScript client for ABB Robot Web Services that supports both protocol versions (RWS 1.0 + 2.0).
 
-The session cookie is stored at `~/.abb-rws-session`.
+Building robot tooling outside this extension — a CLI, a web HMI, a ROS bridge, an MES connector? Skip the protocol-quirk research:
+
+```bash
+npm i abb-rws-client
+```
+
+```ts
+import { createClient } from 'abb-rws-client';
+
+// Auto-detects RWS 1.0 (IRC5) vs 2.0 (OmniCore) from the auth challenge
+const client = await createClient({ host: '192.168.125.1' });
+console.log(await client.getControllerState(), await client.getOperationMode());
+```
+
+The package ships with the full `RobotManager` lifecycle, `MultiRobotManager` orchestration, WebSocket subscriptions with polling fallback, `IRWSAdapter` typed interface, and ~30 documented protocol quirks the ABB developer center doesn't cover.
 
 ---
+
+## What you can't do (and why)
+
+ABB designed certain things to be impossible from a remote interface. We probed all of these against live virtual controllers; they're protocol-level walls, not extension limitations:
+
+- **Bypass the FlexPendant op-mode-change confirmation popup** — safety-by-design.
+- **Bypass the RMMP grant prompt** — safety-by-design.
+- **Modify UAS user grants from RWS** — `/users/grant-status` is read-only; UAS configuration is FlexPendant-only.
+- **Override the FlexPendant key switch on real hardware** — physical safety interlock.
+- **Jog from AUTO mode** — forbidden by ISO 10218.
+
+Coming in 0.10+:
+
+- Step debugging UI (Step Into / Over / Out + breakpoint sync).
+- WebSocket-based real-time state on RWS 2.0 (currently 1 s polling).
+- Hot-edit / ModPos in a running program.
+
+---
+
+## Pair with the official ABB extension
+
+ABB's own [RAPID & Ecosystem Tools](https://marketplace.visualstudio.com/items?itemName=abb-robotics-ecosystem.abb-robotics) provides additional language-level features. Both extensions co-exist cleanly — install both for the best experience.
+
+---
+
+## Cross-platform
+
+Built on Node.js APIs only. Tested on Windows; the same code runs on macOS and Linux. RobotStudio is Windows-only, but real ABB hardware (and OmniCore Docker VCs) work fine from any platform.
+
+---
+
+## Safety notes
+
+This extension can change controller state — turn motors on, start RAPID, write I/O signals. Read the [ABB safety documentation](https://search.abb.com/library/Download.aspx?DocumentID=3HAC020738-001&LanguageCode=en) for your robot before using these features outside a sandbox.
+
+---
+
+## Contributing & feedback
+
+- Issues / PRs: <https://github.com/ichbinmeraj/abb-rws-vscode>
+- Release history: [CHANGELOG.md](./CHANGELOG.md)
 
 ## License
 
-MIT © Meraj Safari
+MIT — Meraj Safari, 2026

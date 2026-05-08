@@ -1,0 +1,172 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "RAPID",
+  "scopeName": "source.rapid",
+  "fileTypes": ["mod", "sys", "prg", "MOD", "SYS", "PRG"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#module-declaration" },
+    { "include": "#routine-declaration" },
+    { "include": "#data-declaration" },
+    { "include": "#control-flow" },
+    { "include": "#error-handling" },
+    { "include": "#io-instructions" },
+    { "include": "#motion-instructions" },
+    { "include": "#system-instructions" },
+    { "include": "#types" },
+    { "include": "#constants" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#function-call" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "match": "!.*$",
+          "name": "comment.line.exclamation.rapid"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.rapid",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        { "match": "\\\\\\\\", "name": "constant.character.escape.rapid" }
+      ]
+    },
+    "module-declaration": {
+      "patterns": [
+        {
+          "match": "(?i)\\b(MODULE|ENDMODULE)\\b\\s*(\\w+)?",
+          "captures": {
+            "1": { "name": "keyword.control.module.rapid" },
+            "2": { "name": "entity.name.module.rapid" }
+          }
+        }
+      ]
+    },
+    "routine-declaration": {
+      "patterns": [
+        {
+          "match": "(?i)\\b(LOCAL\\s+)?(PROC|FUNC|TRAP|ENDPROC|ENDFUNC|ENDTRAP)\\b\\s*(\\w+)?\\s*(\\w+)?",
+          "captures": {
+            "1": { "name": "storage.modifier.rapid" },
+            "2": { "name": "keyword.control.routine.rapid" },
+            "3": { "name": "storage.type.return.rapid" },
+            "4": { "name": "entity.name.function.rapid" }
+          }
+        }
+      ]
+    },
+    "data-declaration": {
+      "patterns": [
+        {
+          "match": "(?i)\\b(LOCAL\\s+|TASK\\s+)?(VAR|PERS|CONST)\\s+(\\w+)\\s+(\\w+)",
+          "captures": {
+            "1": { "name": "storage.modifier.rapid" },
+            "2": { "name": "storage.type.declaration.rapid" },
+            "3": { "name": "support.type.rapid" },
+            "4": { "name": "variable.other.rapid" }
+          }
+        }
+      ]
+    },
+    "control-flow": {
+      "patterns": [
+        {
+          "match": "(?i)\\b(IF|THEN|ELSE|ELSEIF|ENDIF|WHILE|ENDWHILE|DO|FOR|FROM|TO|STEP|ENDFOR|TEST|CASE|DEFAULT|ENDTEST|RETURN|GOTO|EXIT|STOP|BREAK|EXITCYCLE|CONNECT|WITH)\\b",
+          "name": "keyword.control.rapid"
+        },
+        {
+          "match": "(?i)\\b(WAIT|WaitTime|WaitDI|WaitDO|WaitUntil|WaitGI|WaitGO|WaitAI|WaitAO|WaitRob|WaitSyncTask|WaitTestAndSet|WaitLoad|WaitSensor|IDelete|ISignalDI|ISignalDO|ISignalGI|ISignalGO|ISignalAI|ISignalAO|ISleep|IWatch|IDisable|IEnable|IRMQMessage)\\b",
+          "name": "keyword.control.wait.rapid"
+        }
+      ]
+    },
+    "error-handling": {
+      "patterns": [
+        {
+          "match": "(?i)\\b(ERROR|RAISE|RETRY|TRYNEXT|UNDO|BACKWARD|ERRSTR|ErrWrite|ErrLog|TryInt|RaiseToUser|EXIT|RestoPath|StorePath|TrigInt)\\b",
+          "name": "keyword.control.error.rapid"
+        }
+      ]
+    },
+    "io-instructions": {
+      "patterns": [
+        {
+          "match": "(?i)\\b(SetDO|ResetDO|PulseDO|InvertDO|SetGO|SetAO|SetDI|ResetDI|TestDI|TestSignRead|TestSignReset|AliasIO|IODisable|IOEnable|IOBusStart|IOBusState)\\b",
+          "name": "support.function.io.rapid"
+        },
+        {
+          "match": "(?i)\\b(TPWrite|TPErase|TPReadNum|TPReadFK|TPShow|TPHome)\\b",
+          "name": "support.function.tp.rapid"
+        }
+      ]
+    },
+    "motion-instructions": {
+      "patterns": [
+        {
+          "match": "(?i)\\b(MoveJ|MoveL|MoveC|MoveAbsJ|MoveJSync|MoveLSync|MoveCSync|MoveJDO|MoveLDO|MoveCDO|TriggJ|TriggL|TriggC|SearchL|SearchC|SearchExtJ|ConfL|ConfJ|SingArea|VelSet|AccSet|RampLim|PathAccLim|MotionSup|CorrCon|CorrDiscon|CorrClear|CorrWrite|PDispOn|PDispOff|PDispSet|EOffsOn|EOffsOff|EOffsSet|SoftAct|SoftDeact|TuneServo|TuneReset)\\b",
+          "name": "support.function.motion.rapid"
+        },
+        {
+          "match": "(?i)\\b(CalcJointT|CalcRobT|MirPos|RelTool|Offs|PoseInv|PoseMult|PoseVect|ORobT|OFrame|DefAccFrame|DefDFrame|DefFrame|StorePath|RestoPath)\\b",
+          "name": "support.function.calc.rapid"
+        }
+      ]
+    },
+    "system-instructions": {
+      "patterns": [
+        {
+          "match": "(?i)\\b(MotorOn|MotorOff|Stop|StopMove|StartMove|StopMoveReset|ClearPath|FitCircle|UnLoad|Load|Save|Open|Close|Read|Write|ClearIOBuff|TestExecLevel|GetSysInfo|GetTaskName|StringToVal|ValToStr|CDate|CTime|GetTime)\\b",
+          "name": "support.function.system.rapid"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "match": "(?i)\\b(num|dnum|bool|string|byte|stringdig|btnres|errnum|intnum|symnum|switch|jointtarget|robtarget|extjoint|orient|pose|confdata|robjoint|pos|tooldata|wobjdata|loaddata|speeddata|zonedata|stoppointdata|trapdata|signaldi|signaldo|signalgi|signalgo|signalai|signalao|signaldogroup|triggdata|fcboxvol|fccylindervol|fcframe|fcdistance|fcforcevector|loadidnum|paridnum|paridvalidnum|tunetype|busstate|datapos|aiotrigg|cnvcmd|cnvframe|opnum|stringarray)\\b",
+          "name": "support.type.rapid"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "match": "(?i)\\b(TRUE|FALSE|NULL|NOSTEPIN|inpos|fine|z0|z1|z5|z10|z15|z20|z30|z40|z50|z60|z80|z100|z150|z200|v5|v10|v20|v30|v40|v50|v60|v80|v100|v150|v200|v300|v400|v500|v600|v800|v1000|v1500|v2000|v2500|v3000|v4000|v5000|v6000|v7000|vmax|tool0|wobj0|load0)\\b",
+          "name": "constant.language.rapid"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "match": "\\b\\d+(\\.\\d+)?([eE][+-]?\\d+)?\\b",
+          "name": "constant.numeric.rapid"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "match": "(:=|<=|>=|<>|<|>|=|\\+|-|\\*|/|\\b(AND|OR|NOT|XOR|MOD|DIV)\\b)",
+          "name": "keyword.operator.rapid"
+        }
+      ]
+    },
+    "function-call": {
+      "patterns": [
+        {
+          "match": "\\b(\\w+)\\s*\\(",
+          "captures": {
+            "1": { "name": "entity.name.function.call.rapid" }
+          }
+        }
+      ]
+    }
+  }
+}

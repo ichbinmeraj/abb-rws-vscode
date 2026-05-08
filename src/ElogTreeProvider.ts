@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { RobotManager } from './RobotManager';
+import type { RobotManager } from 'abb-rws-client';
 import type { ElogMessage } from 'abb-rws-client';
 
 const MSGTYPE_ICON: Record<number, string> = {
@@ -8,26 +8,46 @@ const MSGTYPE_ICON: Record<number, string> = {
   3: 'error',
 };
 
+// Severity label for the icon tooltip
+const MSGTYPE_LABEL: Record<number, string> = {
+  1: 'Information',
+  2: 'Warning',
+  3: 'Error',
+};
+
+const MSGTYPE_COLOR: Record<number, string> = {
+  1: 'charts.blue',
+  2: 'charts.orange',
+  3: 'errorForeground',
+};
+
 class MsgItem extends vscode.TreeItem {
-  constructor(msg: ElogMessage) {
-    super(`[${msg.code}] ${msg.title}`, vscode.TreeItemCollapsibleState.Collapsed);
+  /** Direct reference so getChildren can access all fields without a re-search. */
+  constructor(public readonly msg: ElogMessage) {
+    super(`[${msg.code}] ${msg.title || `Event ${msg.code}`}`, vscode.TreeItemCollapsibleState.Collapsed);
     this.description = msg.timestamp;
-    this.iconPath = new vscode.ThemeIcon(MSGTYPE_ICON[msg.msgtype] ?? 'circle-outline');
-    this.tooltip = new vscode.MarkdownString(
-      `**${msg.title}**\n\n${msg.desc}` +
-      (msg.causes        ? `\n\n**Causes:** ${msg.causes}`         : '') +
-      (msg.consequences  ? `\n\n**Consequences:** ${msg.consequences}` : '') +
-      (msg.actions       ? `\n\n**Actions:** ${msg.actions}`       : ''),
+    const colorToken = MSGTYPE_COLOR[msg.msgtype];
+    this.iconPath    = colorToken
+      ? new vscode.ThemeIcon(MSGTYPE_ICON[msg.msgtype] ?? 'circle-outline', new vscode.ThemeColor(colorToken))
+      : new vscode.ThemeIcon(MSGTYPE_ICON[msg.msgtype] ?? 'circle-outline');
+    this.tooltip     = new vscode.MarkdownString(
+      `**[${msg.code}] ${msg.title || `Event ${msg.code}`}**  \n` +
+      `*${MSGTYPE_LABEL[msg.msgtype] ?? 'Event'}*  \n\n` +
+      (msg.desc         ? `${msg.desc}\n\n` : '') +
+      (msg.causes       ? `**Causes:** ${msg.causes}\n\n` : '') +
+      (msg.consequences ? `**Consequences:** ${msg.consequences}\n\n` : '') +
+      (msg.actions      ? `**Actions:** ${msg.actions}` : '')
     );
     this.contextValue = 'elogMessage';
   }
 }
 
 class DetailItem extends vscode.TreeItem {
-  constructor(label: string, value: string) {
+  constructor(label: string, value: string, icon = 'symbol-string') {
     super(label, vscode.TreeItemCollapsibleState.None);
     this.description = value;
-    this.iconPath = new vscode.ThemeIcon('symbol-string');
+    this.iconPath    = new vscode.ThemeIcon(icon);
+    this.tooltip     = value;
   }
 }
 
@@ -61,16 +81,26 @@ export class ElogTreeProvider implements vscode.TreeDataProvider<ElogTreeItem> {
       return s.eventLog.map(msg => new MsgItem(msg));
     }
 
-    // Expanded message: show details
+    // Expanded message → detail rows
     if (element instanceof MsgItem) {
-      const msg = s.eventLog.find(m => `[${m.code}] ${m.title}` === element.label);
-      if (!msg) return [];
-      const details: DetailItem[] = [
-        new DetailItem('Description', msg.desc),
-      ];
-      if (msg.causes)       details.push(new DetailItem('Causes',       msg.causes));
-      if (msg.consequences) details.push(new DetailItem('Consequences', msg.consequences));
-      if (msg.actions)      details.push(new DetailItem('Actions',      msg.actions));
+      const msg = element.msg;
+      const details: DetailItem[] = [];
+
+      if (msg.desc) {
+        details.push(new DetailItem('Description', msg.desc, 'info'));
+      }
+      if (msg.causes && msg.causes.trim()) {
+        details.push(new DetailItem('Causes', msg.causes, 'question'));
+      }
+      if (msg.consequences && msg.consequences.trim()) {
+        details.push(new DetailItem('Consequences', msg.consequences, 'warning'));
+      }
+      if (msg.actions && msg.actions.trim()) {
+        details.push(new DetailItem('Actions', msg.actions, 'lightbulb'));
+      }
+      if (details.length === 0) {
+        details.push(new DetailItem('No details', `Event code ${msg.code}`, 'circle-slash'));
+      }
       return details;
     }
 
