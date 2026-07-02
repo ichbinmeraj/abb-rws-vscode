@@ -1,6 +1,6 @@
 const esbuild = require('esbuild');
 
-esbuild.build({
+const options = {
   entryPoints: ['src/extension.ts'],
   bundle: true,
   outfile: 'dist/extension.js',
@@ -9,4 +9,13 @@ esbuild.build({
   platform: 'node',
   sourcemap: true,
   minify: false,
-}).catch(() => process.exit(1));
+};
+
+if (process.argv.includes('--watch')) {
+  esbuild.context(options).then(ctx => {
+    console.log('[esbuild] watching src/ …');
+    return ctx.watch();
+  }).catch(() => process.exit(1));
+} else {
+  esbuild.build(options).catch(() => process.exit(1));
+}

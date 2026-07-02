@@ -1,5 +1,6 @@
-node_modules/                                                                                                                
+node_modules/
 dist/
-.vsix                                                                                                                       
-.env                                                                                                                         
+*.vsix
+.env
 .DS_Store
+*.log

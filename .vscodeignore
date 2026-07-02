@@ -14,13 +14,16 @@ scripts/**
 # Package artifacts
 *.vsix
 abb-rws-client-*.tgz
+vendor/**
+dist/*.map
 
 # Sample programs are shipped only as documentation references; the
 # `.controller.mod` file is an orphan from earlier dev work, exclude.
 samples/MotionTest.controller.mod
 
 # Internal docs and plans
-docs/RWS1_PARITY_PLAN.md
+docs/**
+samples/TEST_PLAN.md
 
 # Repo / dev config
 .vscode/**

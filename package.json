@@ -1158,10 +1158,12 @@
   "scripts": {
     "build": "node build.js",
     "watch": "node build.js --watch",
+    "typecheck": "tsc --noEmit",
+    "vscode:prepublish": "npm run build && npm run typecheck",
     "package": "npx vsce package"
   },
   "dependencies": {
-    "abb-rws-client": "file:../abb-rws-client/abb-rws-client-0.5.0.tgz"
+    "abb-rws-client": "file:vendor/abb-rws-client-0.7.2.tgz"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
