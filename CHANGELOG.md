@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.9.3 — 2026-07-03 — Real-hardware TLS fix + reproducible builds
+
+### Fixed
+
+- **Connecting to real OmniCore controllers from VS Code failed with
+  `self signed certificate`** ([#2](https://github.com/ichbinmeraj/abb-rws-vscode/issues/2)).
+  VS Code's extension host replaces custom HTTP agents for non-localhost targets,
+  which silently dropped the client's agent-level TLS bypass — so the self-signed
+  certificate every ABB controller ships was rejected. RobotStudio VCs on
+  `127.0.0.1` were never affected (the extension host doesn't intercept localhost),
+  which is why this only surfaced on real hardware. The bundled `abb-rws-client`
+  0.7.3 now sets the TLS option per-request on every HTTPS path (requests,
+  subscription POST, port probing, protocol detection).
+- `npm run watch` now actually watches (esbuild context).
+
+### Internal
+
+- The `abb-rws-client` dependency is now a tarball tracked inside this repo
+  (`vendor/abb-rws-client-0.7.3.tgz`) — the extension builds from a clean clone.
+- `vscode:prepublish` runs build + typecheck, so a type-broken build can't be
+  packaged.
+- Internal docs, sourcemaps, and the vendor tarball are excluded from the `.vsix`.
+
 ## 0.9.2 — 2026-05-07 — Sidebar consolidation (11 → 5 panels) + tabbed webviews
 
 A holistic redesign of the activity-bar layout. Eleven separate tree views

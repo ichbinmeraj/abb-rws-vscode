@@ -1,8 +1,8 @@
 {
   "name": "abb-rws",
   "displayName": "RAPID Live — ABB Robotics for VS Code",
+  "version": "0.9.3",
   "description": "The only VS Code extension that connects to live ABB IRC5 (RobotWare 6) and OmniCore (RobotWare 7) controllers. Live-tested on RW7.21 + RW6.16. RAPID language server (hover docs, autocomplete, signature help, go-to-definition, inlay hints with live values, CodeLens), git-style push/pull/diff workflow for .mod files, multi-robot management, real-time WebSocket subscriptions, IK + FK, file/IO/event-log access, variable watch panel, dual RWS 1.0 + 2.0 protocol support.",
-  "version": "0.9.2",
   "publisher": "merajsafari",
   "author": {
     "name": "Meraj Safari"
@@ -1163,7 +1163,7 @@
     "package": "npx vsce package"
   },
   "dependencies": {
-    "abb-rws-client": "file:vendor/abb-rws-client-0.7.2.tgz"
+    "abb-rws-client": "file:vendor/abb-rws-client-0.7.3.tgz"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
