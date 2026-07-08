@@ -360,7 +360,11 @@ export function activate(context: vscode.ExtensionContext) {
   Logger.info(`extension activated — log file: ${Logger.getLogFilePath()}`);
 
   const cfg   = vscode.workspace.getConfiguration('abbRobot');
-  const multi = MultiRobotManager.fromConfigs(loadConfigs(cfg));
+  // Schema minimum is 200 but settings.json edits bypass UI validation — clamp here too.
+  const refreshIntervalMs = Math.max(200, cfg.get<number>('refreshInterval', 1000));
+  // TLS verification stays off unless opted in — controllers ship self-signed certs.
+  const strictTls = cfg.get<boolean>('strictTls', false);
+  const multi = MultiRobotManager.fromConfigs(loadConfigs(cfg), { refreshIntervalMs, strictTls });
   globalMulti = multi;
 
   // Route RobotManager errors (3 failed polls → auto-disconnect) through VS Code dialogs.
@@ -381,6 +385,11 @@ export function activate(context: vscode.ExtensionContext) {
   const ctrlSrcProvider = new ControllerSourceProvider(multi);
   const robotsProvider  = new RobotsTreeProvider(multi);
   const cfgProvider     = new CfgTreeProvider(multi);
+
+  // Scratch documents opened by "Edit CFG Instance", keyed by document URI.
+  // Saving one writes its attributes back to the robot it was opened FROM
+  // (robotId recorded at edit time) — the active robot may have changed since.
+  const cfgEditTargets = new Map<string, { robotId: string; domain: string; type: string; instance: string }>();
 
   context.subscriptions.push(
     // ── Composite views ────────────────────────────────────────────────────
@@ -429,6 +438,20 @@ export function activate(context: vscode.ExtensionContext) {
       new LiveCellWebviewProvider(multi),
       { webviewOptions: { retainContextWhenHidden: true } },
     ),
+
+    // Polling interval and TLS strictness are fixed at connect time (RobotManager
+    // options), so a changed setting only applies to managers built after it — offer a reload.
+    vscode.workspace.onDidChangeConfiguration(e => {
+      const changed = ['abbRobot.refreshInterval', 'abbRobot.strictTls']
+        .find(key => e.affectsConfiguration(key));
+      if (!changed) { return; }
+      vscode.window.showInformationMessage(
+        `${changed} changed — reload the window to apply it.`,
+        'Reload Window',
+      ).then(choice => {
+        if (choice === 'Reload Window') { vscode.commands.executeCommand('workbench.action.reloadWindow'); }
+      });
+    }),
 
     // RAPID hover provider — shows ABB reference docs for instructions, functions, data types
     // when hovering over an identifier in any .mod / .sys / .prg file.
@@ -1770,7 +1793,8 @@ export function activate(context: vscode.ExtensionContext) {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
       const tool = await vscode.window.showInputBox({ prompt: 'Tool name (existing persistent tooldata)', placeHolder: 'tool0' });
       if (!tool) { return; }
-      try { await mgr(multi).setActiveTool('ROB_1', tool); vscode.window.showInformationMessage(`✓ Active tool: ${tool}`); }
+      const mu = multi.state.mechunits[0] ?? 'ROB_1';
+      try { await mgr(multi).setActiveTool(mu, tool); vscode.window.showInformationMessage(`✓ Active tool: ${tool}`); }
       catch (e: unknown) { showError('Set active tool', e, multi); }
     }),
 
@@ -1778,13 +1802,16 @@ export function activate(context: vscode.ExtensionContext) {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
       const wobj = await vscode.window.showInputBox({ prompt: 'Work object name (existing persistent wobjdata)', placeHolder: 'wobj0' });
       if (!wobj) { return; }
-      try { await mgr(multi).setActiveWobj('ROB_1', wobj); vscode.window.showInformationMessage(`✓ Active wobj: ${wobj}`); }
+      const mu = multi.state.mechunits[0] ?? 'ROB_1';
+      try { await mgr(multi).setActiveWobj(mu, wobj); vscode.window.showInformationMessage(`✓ Active wobj: ${wobj}`); }
       catch (e: unknown) { showError('Set active wobj', e, multi); }
     }),
 
     // ─── CFG write ─────────────────────────────────────────────────────────
     tracedCommand('abbRobot.editCfgInstance', async () => {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
+      const robotId = multi.activeId;
+      if (!robotId) { vscode.window.showWarningMessage('No robot selected.'); return; }
       const m = mgr(multi);
       try {
         const domains = await m.listCfgDomains();
@@ -1797,14 +1824,61 @@ export function activate(context: vscode.ExtensionContext) {
         const instance = await vscode.window.showQuickPick(instances, { placeHolder: `Pick instance to edit` });
         if (!instance) { return; }
         const current = await m.getCfgInstance(domain, type, instance);
-        const json = `// CFG instance: ${domain}/${type}/${instance}\n// Edit attribute values then save (Ctrl+S). Close the tab to apply on the controller.\n${JSON.stringify(current, null, 2)}`;
-        const doc = await vscode.workspace.openTextDocument({ language: 'json', content: json });
-        await vscode.window.showTextDocument(doc);
-        // Write-back is via the explicit "Save Domain to .cfg" or repeated edit/save command.
-        // Direct in-place save would require document save listeners we don't yet have.
-        vscode.window.showInformationMessage('After editing: re-run "Edit CFG Instance" with the same domain/type/instance to confirm and write.');
+        const json = `// CFG instance: ${domain}/${type}/${instance}\n// Edit attribute values, then save (Ctrl+S) to write them back to the controller.\n${JSON.stringify(current, null, 2)}`;
+        // Real file, not untitled — Ctrl+S must fire onDidSaveTextDocument for the
+        // write-back below. .jsonc so the header comments don't squiggle.
+        const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const scratchDir = wsRoot ?? path.join(require('os').homedir(), '.abb-rws-extension', 'scratch');
+        fs.mkdirSync(scratchDir, { recursive: true });
+        const destPath = path.join(scratchDir, `${domain}.${type}.${instance}.cfg.jsonc`.replace(/[\\/:*?"<>|]/g, '_'));
+        fs.writeFileSync(destPath, json, 'utf8');
+        const doc = await vscode.workspace.openTextDocument(destPath);
+        await vscode.window.showTextDocument(doc, { preview: false });
+        cfgEditTargets.set(doc.uri.toString(), { robotId, domain, type, instance });
       } catch (e: unknown) { showError('Edit CFG instance', e, multi); }
     }),
+
+    // Write-back for the CFG scratch documents opened above.
+    vscode.workspace.onDidSaveTextDocument(async doc => {
+      const target = cfgEditTargets.get(doc.uri.toString());
+      if (!target) { return; }
+      // Write back to the robot the scratch file was opened from — never the
+      // currently active one, which may be a different robot by now.
+      const entry = multi.entries.find(e => e.id === target.robotId);
+      const robotName = entry?.config.name ?? target.robotId;
+      if (!entry) {
+        vscode.window.showErrorMessage(
+          `CFG not written — robot "${robotName}" (which this instance was opened from) is no longer in the robot list. Re-open the instance to edit it.`,
+        );
+        return;
+      }
+      if (!entry.manager.state.connected) {
+        vscode.window.showWarningMessage(
+          `CFG not written — "${robotName}" (which this instance was opened from) is disconnected. Reconnect it and save again.`,
+        );
+        return;
+      }
+      let attrs: Record<string, string>;
+      try {
+        const body = doc.getText().split(/\r?\n/).filter(l => !l.trim().startsWith('//')).join('\n');
+        const parsed = JSON.parse(body) as Record<string, unknown>;
+        attrs = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          // rdonly/instanceid are instance metadata the controller reports on read; not writable attributes.
+          if (k === 'rdonly' || k === 'instanceid') { continue; }
+          attrs[k] = String(v);
+        }
+      } catch (e) {
+        vscode.window.showErrorMessage(`CFG not written — document is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+      try {
+        await entry.manager.setCfgInstance(target.domain, target.type, target.instance, attrs);
+        vscode.window.showInformationMessage(`✓ Wrote ${target.domain}/${target.type}/${target.instance} to "${robotName}". Most CFG changes need a controller restart to take effect.`);
+      } catch (e: unknown) { showError('Write CFG instance', e, multi); }
+    }),
+    // Stop tracking once the scratch document is closed.
+    vscode.workspace.onDidCloseTextDocument(doc => { cfgEditTargets.delete(doc.uri.toString()); }),
 
     tracedCommand('abbRobot.createCfgInstance', async () => {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
@@ -2064,13 +2138,17 @@ export function activate(context: vscode.ExtensionContext) {
      * configured in the controller's CFG (`SYS/CAB_TASKS`) at boot. This
      * command writes the new task entry there, then prompts for a restart.
      *
-     * Required CFG attrs (live-confirmed against OmniCore + IRC5):
-     *   Task         — task name (e.g. T_BCKGRND2)
-     *   Type         — 'NORMAL' | 'STATIC' | 'SEMISTATIC'
-     *   Trust Level  — 'NoSafety' (default) | 'TPSysHalt' | 'TPSysStop' | 'SysFail' | 'SysStop' | 'NoOfTaskAtBoot'
-     *   Entry        — entrypoint routine ('main' usually)
-     *   Motion Task  — Yes / No  (Yes = controls a robot)
-     *   Main         — module name to run on entry
+     * CFG attrs (live-confirmed against OmniCore RW7.21 + IRC5 RW6.16 via
+     * GET /rw/cfg/SYS/CAB_TASKS/attributes — the schema is identical on both):
+     *   Name        — task name (e.g. T_BCKGRND2)
+     *   Type        — 'NORMAL' | 'STATIC' | 'SEMISTATIC'
+     *   TrustLevel  — 'NoSafety' (default) | 'TPSysHalt' | 'TPSysStop' | 'SysFail' | 'SysStop'
+     *   Entry       — entrypoint routine ('main' usually)
+     *   MotionTask  — 'TRUE' / 'FALSE'  (TRUE = controls a robot). The schema
+     *     declares a bool domain FALSE/TRUE. Live-verified 2026-07-09 on RW6.16:
+     *     ?action=set accepts either casing (204) and readback reports lowercase;
+     *     we write the schema's casing.
+     * Remaining attrs (StackSize, BindRef, Rmq*, …) keep their type defaults.
      *
      * After write + restart the task appears in `getRapidTasks()`. If you
      * want it active in the current cycle, also call activateRapidTask().
@@ -2126,11 +2204,11 @@ export function activate(context: vscode.ExtensionContext) {
 
       try {
         await m.createCfgInstance('SYS', 'CAB_TASKS', taskName, {
-          Task: taskName,
+          Name: taskName,
           Type: type.label,
-          'Trust Level': trustLevel,
+          TrustLevel: trustLevel,
           Entry: entryRoutine,
-          'Motion Task': motionTask.label,
+          MotionTask: motionTask.label === 'Yes' ? 'TRUE' : 'FALSE',
         });
         const restart = await vscode.window.showInformationMessage(
           `✓ Task ${taskName} written to CFG. Controller restart required to load it.`,

@@ -15,7 +15,8 @@ import { Logger } from './Logger';
  *   - module         (`MODULE Foo`)
  *   - proc / func    (`PROC name(...)`, `FUNC type name(...)`, `LOCAL PROC ...`)
  *   - trap           (`TRAP name`)
- *   - var / pers / const   (`VAR num counter := 0;`, `PERS robtarget pHome := ...`)
+ *   - var / pers / const   (`VAR num counter := 0;`, `PERS robtarget pHome := ...`,
+ *                           `TASK PERS num cycles := 0;`)
  */
 
 export type RapidSymbolKind =
@@ -129,9 +130,12 @@ export class RapidLanguageIndex implements vscode.Disposable {
     const reProc   = /^\s*(LOCAL\s+)?PROC\s+(\w+)\s*\(/i;
     const reFunc   = /^\s*(LOCAL\s+)?FUNC\s+(\w+)\s+(\w+)\s*\(/i;
     const reTrap   = /^\s*(LOCAL\s+)?TRAP\s+(\w+)/i;
-    const reVar    = /^\s*(LOCAL\s+)?VAR\s+(\w+)\s+(\w+)/i;
-    const rePers   = /^\s*(LOCAL\s+)?PERS\s+(\w+)\s+(\w+)/i;
-    const reConst  = /^\s*(LOCAL\s+)?CONST\s+(\w+)\s+(\w+)/i;
+    // Data declarations take an optional LOCAL or TASK scope modifier
+    // (TASK PERS / TASK VAR are task-persistent — same as the grammar).
+    const reVar    = /^\s*(LOCAL\s+|TASK\s+)?VAR\s+(\w+)\s+(\w+)/i;
+    const rePers   = /^\s*(LOCAL\s+|TASK\s+)?PERS\s+(\w+)\s+(\w+)/i;
+    const reConst  = /^\s*(LOCAL\s+|TASK\s+)?CONST\s+(\w+)\s+(\w+)/i;
+    const isLocalModifier = (g: string | undefined): boolean => /^local/i.test(g ?? '');
 
     const push = (
       name: string,
@@ -181,15 +185,15 @@ export class RapidLanguageIndex implements vscode.Disposable {
         continue;
       }
       if ((m = reVar.exec(stripped))) {
-        push(m[3], 'var', !!m[1], i, raw, m[2]);
+        push(m[3], 'var', isLocalModifier(m[1]), i, raw, m[2]);
         continue;
       }
       if ((m = rePers.exec(stripped))) {
-        push(m[3], 'pers', !!m[1], i, raw, m[2]);
+        push(m[3], 'pers', isLocalModifier(m[1]), i, raw, m[2]);
         continue;
       }
       if ((m = reConst.exec(stripped))) {
-        push(m[3], 'const', !!m[1], i, raw, m[2]);
+        push(m[3], 'const', isLocalModifier(m[1]), i, raw, m[2]);
         continue;
       }
     }

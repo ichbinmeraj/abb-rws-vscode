@@ -1,6 +1,8 @@
 // Probe: can we save a loaded RAPID module to a file via RWS 2.0?
 // Fix path for GitHub issue #3 (openModuleSource 404 when module not on disk):
-//   POST /rw/rapid/tasks/{task}/modules/{module}/save  body: destination=...
+//   POST /rw/rapid/tasks/{task}/modules/{module}/save  body: name=<file>&path=TEMP:
+// (live-verified 2026-07-08: the controller wants name+path, appends .modx itself;
+//  TEMP:, HOME: etc. as path; DELETE needs a versioned Accept header)
 // Then read it back via /fileservice and clean up.
 import https from 'node:https';
 
@@ -55,12 +57,13 @@ const mod = names.find(n => !['BASE', 'user', 'DPUSER', 'DPBASE'].includes(n)) ?
 if (!mod) { console.log('✗ no module to test with'); process.exit(1); }
 console.log(`→ testing with module: ${mod}`);
 
-// 3) try save action — destination variants
-const dest = `probe_saved_${mod}.mod`;
+// 3) try save action — live-verified form first (name without extension; the
+//    controller appends .modx), legacy guesses kept as fallbacks
+const tmpName = `probe_saved_${mod}`;
+const dest = `${tmpName}.modx`;
 for (const body of [
-  `destination=${encodeURIComponent('HOME/' + dest)}`,
-  `destination=${encodeURIComponent('HOME:/' + dest)}`,
-  `destination=${encodeURIComponent(dest)}`,
+  `name=${encodeURIComponent(tmpName)}&path=${encodeURIComponent('HOME:')}`,
+  `name=${encodeURIComponent(tmpName)}&path=${encodeURIComponent('TEMP:')}`,
 ]) {
   const r = await req(port, 'POST', `/rw/rapid/tasks/T_ROB1/modules/${encodeURIComponent(mod)}/save`, body);
   console.log(`POST .../modules/${mod}/save  body="${body}" → ${r.status} ${r.status >= 400 ? r.body.slice(0, 180).replace(/\s+/g, ' ') : ''}`);

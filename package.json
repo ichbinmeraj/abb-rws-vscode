@@ -1,7 +1,7 @@
 {
   "name": "abb-rws",
   "displayName": "RAPID Live — ABB Robotics for VS Code",
-  "version": "0.9.3",
+  "version": "0.10.0",
   "description": "The only VS Code extension that connects to live ABB IRC5 (RobotWare 6) and OmniCore (RobotWare 7) controllers. Live-tested on RW7.21 + RW6.16. RAPID language server (hover docs, autocomplete, signature help, go-to-definition, inlay hints with live values, CodeLens), git-style push/pull/diff workflow for .mod files, multi-robot management, real-time WebSocket subscriptions, IK + FK, file/IO/event-log access, variable watch panel, dual RWS 1.0 + 2.0 protocol support.",
   "publisher": "merajsafari",
   "author": {
@@ -82,7 +82,7 @@
         "abbRobot.robots": {
           "type": "array",
           "default": [],
-          "description": "List of saved robot controllers. Each entry: { id, name, host, username, password }.",
+          "description": "List of saved robot controllers. Each entry: { id, name, host, port?, useHttps?, username, password }.",
           "items": {
             "type": "object",
             "properties": {
@@ -96,6 +96,14 @@
               "host": {
                 "type": "string",
                 "description": "IP address or hostname"
+              },
+              "port": {
+                "type": "number",
+                "description": "RWS port. Omit to auto-detect (the Add Robot wizard fills this in)."
+              },
+              "useHttps": {
+                "type": "boolean",
+                "description": "Connect over HTTPS (OmniCore / RWS 2.0). Set alongside port; omit to auto-detect."
               },
               "username": {
                 "type": "string",
@@ -135,6 +143,11 @@
           "default": 1000,
           "minimum": 200,
           "description": "Status polling interval in ms"
+        },
+        "abbRobot.strictTls": {
+          "type": "boolean",
+          "default": false,
+          "description": "Verify controller TLS certificates on HTTPS connections (OmniCore / RWS 2.0). Off by default because controllers ship with self-signed certificates that fail verification. Turn on only if you have installed a proper certificate on the controller."
         },
         "abbRobot.jog.increment": {
           "type": "number",
@@ -1163,7 +1176,7 @@
     "package": "npx vsce package"
   },
   "dependencies": {
-    "abb-rws-client": "file:vendor/abb-rws-client-0.7.3.tgz"
+    "abb-rws-client": "file:vendor/abb-rws-client-0.8.0.tgz"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",

@@ -24,6 +24,8 @@ interface Parameter {
   type: string;
   optional?: boolean;
   switch?: boolean;
+  /** Alternative to the previous parameter (`Signal | PersBool`) — shares its call slot. */
+  alt?: boolean;
 }
 
 interface RapidEntry {
@@ -62,7 +64,7 @@ export class RapidSignatureHelpProvider implements vscode.SignatureHelpProvider 
     // call's argument-list, until we reach the call name.
     const found = this.findEnclosingCall(lineText);
     if (!found) { return null; }
-    const { name, argIndex } = found;
+    const { name, argsText } = found;
 
     const db = loadDb(this.extensionRoot);
     const entry = db[name.toLowerCase()];
@@ -72,26 +74,83 @@ export class RapidSignatureHelpProvider implements vscode.SignatureHelpProvider 
     const help = new vscode.SignatureHelp();
     help.signatures      = [sig];
     help.activeSignature = 0;
-    help.activeParameter = Math.min(argIndex, entry.parameters.length - 1);
+    help.activeParameter = this.computeActiveParameter(argsText, entry.parameters);
     return help;
   }
 
   /**
+   * Map the typed argument text onto the parameter list (which is in call
+   * order, optional args interleaved with the required ones).
+   *
+   * Optional args don't consume a positional slot — they attach with `\Name`
+   * either inside a slot (`v1000\V:=200`) or as their own slot (`\Conc,`).
+   * So: if the cursor sits in a `\Name` group, highlight that optional by
+   * name; otherwise count the preceding *positional* slots and highlight the
+   * matching required parameter.
+   */
+  private computeActiveParameter(argsText: string, params: Parameter[]): number {
+    // Split into comma-separated slots at nesting depth 0, ignoring commas
+    // inside strings. The last (possibly empty) slot is the one being typed.
+    const slots: string[] = [];
+    let cur = '';
+    let depth = 0;
+    let inStr = false;
+    for (const ch of argsText) {
+      if (ch === '"') { inStr = !inStr; }
+      if (!inStr) {
+        if (ch === '(') { depth++; }
+        else if (ch === ')') { depth--; }
+        else if (ch === ',' && depth === 0) { slots.push(cur); cur = ''; continue; }
+      }
+      cur += ch;
+    }
+    slots.push(cur);
+
+    // Cursor inside an optional `\Name` group? Match it by name.
+    const opt = slots[slots.length - 1].match(/\\(\w*)[^\\]*$/);
+    if (opt && opt[1]) {
+      const typed = opt[1].toLowerCase();
+      let idx = params.findIndex(p => p.optional && p.name.slice(1).toLowerCase() === typed);
+      if (idx < 0) {
+        idx = params.findIndex(p => p.optional && p.name.slice(1).toLowerCase().startsWith(typed));
+      }
+      if (idx >= 0) { return idx; }
+    }
+
+    // Positional: slots that are pure optional args (`\Conc`) don't count.
+    let pos = 0;
+    for (let i = 0; i < slots.length - 1; i++) {
+      if (!/^\s*\\/.test(slots[i])) { pos++; }
+    }
+    // Required alternatives (`Signal | PersBool`) share one call slot — only
+    // the first of a group advances the slot counter.
+    let group = -1;
+    for (let i = 0; i < params.length; i++) {
+      const p = params[i];
+      if (p.optional) { continue; }
+      if (!p.alt || group < 0) {
+        group++;
+        if (group === pos) { return i; }
+      }
+    }
+    return params.length - 1;
+  }
+
+  /**
    * Walk back from the cursor over the current call's args.
-   * Returns the call name + the zero-based index of the current argument.
+   * Returns the call name + the argument text typed so far.
    *
    * Examples (cursor at │):
-   *   `MoveJ │`           → { name: 'MoveJ', argIndex: 0 }
-   *   `MoveJ p1, │`       → { name: 'MoveJ', argIndex: 1 }
-   *   `Cos(│`             → { name: 'Cos',   argIndex: 0 }
-   *   `Offs(p1, 0, │`     → { name: 'Offs',  argIndex: 2 }
-   *   `MoveJ p1, Offs(p,│ → { name: 'Offs',  argIndex: 1 } (innermost)
+   *   `MoveJ │`           → { name: 'MoveJ', argsText: '' }
+   *   `MoveJ p1, │`       → { name: 'MoveJ', argsText: 'p1, ' }
+   *   `Cos(│`             → { name: 'Cos',   argsText: '' }
+   *   `Offs(p1, 0, │`     → { name: 'Offs',  argsText: 'p1, 0, ' }
+   *   `MoveJ p1, Offs(p,│ → { name: 'Offs',  argsText: 'p,' } (innermost)
    */
-  private findEnclosingCall(prefix: string): { name: string; argIndex: number } | null {
+  private findEnclosingCall(prefix: string): { name: string; argsText: string } | null {
     let depth = 0;
-    let argIndex = 0;
     let i = prefix.length - 1;
-    // Walk right-to-left; track nesting and count commas at the OUTERMOST level.
+    // Walk right-to-left; track nesting until the innermost unmatched `(`.
     while (i >= 0) {
       const ch = prefix[i];
       if (ch === ')') { depth++; }
@@ -102,11 +161,10 @@ export class RapidSignatureHelpProvider implements vscode.SignatureHelpProvider 
           const before = prefix.slice(0, i).trimEnd();
           const m = before.match(/([A-Za-z_]\w*)\s*$/);
           if (!m) { return null; }
-          return { name: m[1], argIndex };
+          return { name: m[1], argsText: prefix.slice(i + 1) };
         }
         depth--;
       }
-      else if (ch === ',' && depth === 0) { argIndex++; }
       else if (ch === ';' && depth === 0) { return null; }  // before this is unrelated
       i--;
     }
@@ -123,16 +181,7 @@ export class RapidSignatureHelpProvider implements vscode.SignatureHelpProvider 
     const db = loadDb(this.extensionRoot);
     const entry = db[name.toLowerCase()];
     if (!entry || entry.kind !== 'instruction' || !entry.parameters?.length) { return null; }
-    // Re-count commas at depth 0 in the args-portion only
-    const args = trimmed.slice(m[0].length);
-    argIndex = 0;
-    let d = 0;
-    for (const ch of args) {
-      if (ch === '(') d++;
-      else if (ch === ')') d--;
-      else if (ch === ',' && d === 0) argIndex++;
-    }
-    return { name, argIndex };
+    return { name, argsText: trimmed.slice(m[0].length) };
   }
 
   private toSignature(e: RapidEntry): vscode.SignatureInformation {

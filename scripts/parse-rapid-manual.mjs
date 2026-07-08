@@ -24,18 +24,32 @@ const raw = fs.readFileSync(INPUT, 'utf-8');
 const lines = raw.split('\n');
 
 // Strip page-furniture noise: headers, footers, copyright lines, page numbers.
+// Trim first — footers are column-aligned (leading spaces) and page headers
+// carry a leading form feed, both of which defeat ^-anchored patterns.
+// Copyright / doc-number lines share their line with the page number in the
+// two-column layout, so those are substring tests.
 function isNoise(line) {
-  return /^Technical reference manual - RAPID/i.test(line)
-      || /^Continues on next page/i.test(line)
-      || /^© Copyright \d{4}-\d{4} ABB/i.test(line)
-      || /^.\s*Copyright \d{4}-\d{4} ABB/i.test(line)
-      || /^3HAC050917-001 Revision/i.test(line)
-      || /^RobotWare\s*-\s*OS/i.test(line)
-      || /^Continued$/i.test(line)
-      || /^Index$/i.test(line)
-      || /^\d+ Instructions?$/i.test(line)
-      || /^\d+ Functions?$/i.test(line)
-      || /^\d+ Data types?$/i.test(line);
+  const t = line.trim();
+  return /^(?:\d+\s+)?Technical reference manual/i.test(t)
+      || /^Continues on next page/i.test(t)
+      || /Copyright \d{4}(?:-\d{4})? ABB/i.test(t)
+      || /3HAC050917-001 Revision/i.test(t)
+      || /^RobotWare\s*-\s*OS/i.test(t)
+      || /^Continued$/i.test(t)
+      || /^Index$/i.test(t)
+      || /^\d+ Instructions?$/i.test(t)
+      || /^\d+ Functions?$/i.test(t)
+      || /^\d+ Data types?$/i.test(t);
+}
+
+// At page breaks pdftotext merges page furniture onto content lines, either
+// side ("[\Orient]        1 Instructions", "1 Instructions        See",
+// "Continued        Application manual - …") — strip the furniture column,
+// keep the content.
+function stripPageHeader(line) {
+  return line
+    .replace(/\s{2,}\d+ (?:Instructions?|Functions?|Data types?)\s*$/i, '')
+    .replace(/^\s*(?:\d+ (?:Instructions?|Functions?|Data types?)|Continued|RobotWare\s*-\s*OS)\s{2,}/i, '');
 }
 
 // Detect entry-start markers in the BODY (after TOC).
@@ -70,7 +84,7 @@ function splitSection(bodyLines, sectionNum) {
       curLines = [];
       continue;
     }
-    if (cur) { curLines.push(ln); }
+    if (cur) { curLines.push(stripPageHeader(ln)); }
   }
   if (cur) { entries.set(cur.name, { ...cur, body: curLines.join('\n') }); }
   return entries;
@@ -216,42 +230,59 @@ const db = {};
  * Parse a RAPID syntax block into a parameter list.
  * Recognized line shapes:
  *   - `[ ParamName ':=' ] < expression (KIND) of TypeName > ','`   → required positional
- *   - `[ '\'OptName ':=' < ... > ]`                                 → optional named
- *   - `[ '\'Switch ]`                                               → optional switch (no value)
- * Returns: [{ name, type, optional, switch }]
+ *   - `[ '\' OptName ':=' < ... > ]`                                → optional named
+ *   - `[ '\' Switch ]` or `[ '\' Switch ',' ]`                      → optional switch (no value)
+ * Returns: [{ name, type, optional, switch, alt }] in CALL ORDER — the order
+ * the arguments appear in the syntax pattern. Signature help indexes into
+ * this list, so optional args must stay interleaved with the positional ones,
+ * exactly where they occur in a call. `alt` marks a parameter that is an
+ * alternative to the previous one (`Signal | PersBool`) — they share one
+ * call slot.
  */
 function parseParameters(syntax) {
   if (!syntax) { return []; }
-  const params = [];
-  // Walk segments separated by `,` at the top level — but `,` may be inside `[]`,
-  // so split on `[` boundaries instead. Each `[ ... ]` block (or unbracketed segment)
-  // is one parameter.
-  // Easier: regex over the whole string.
+  // Regex over the whole string, one pattern per shape.
   // Required pattern:
-  //   [ \s* (Name) \s* ':=' ... < ... of (Type) > ] (with various spacing)
+  //   [ \s* (Name) \s* ':=' ] < ... of (Type) > (with various spacing)
   // Optional named (\Name):
-  //   [ \s* '\\' (Name) \s* ':=' ... < ... of (Type) > ]
+  //   [ \s* '\' (Name) \s* ':=' ... < ... of (Type) > ]
   // Optional switch:
-  //   [ \s* '\\' (Name) \s* ]
-  // The token between `<` and `of` can be any of: expression, persistent, variable, switch.
-  // Wrapper words also vary in spacing/quoting across the manual.
-  const requiredRe = /\[\s*([A-Za-z_]\w*)\s*'?:='?\s*\]\s*<\s*(?:expression|persistent|variable)[^>]*of\s+(\w+)\s*>/gi;
-  const optNamedRe = /\[\s*'?\\'?([A-Za-z_]\w*)\s*'?:='?\s*<\s*(?:expression|persistent|variable)[^>]*of\s+(\w+)\s*>\s*\]/gi;
-  const optSwitchRe = /\[\s*'?\\'?([A-Za-z_]\w*)\s*\](?!\s*<)/gi;
+  //   [ \s* '\' (Name) \s* ]   — sometimes with a quoted ',' before the `]`
+  // The token between `<` and `of` varies: expression, variable, persistent,
+  // "var or pers", "variable or persistent", reference — with erratic spacing.
+  // Quotes around the backslash sometimes decode as U+FFFD in the text dump.
+  const wrapper = String.raw`(?:expression|persistent|variable|reference|var|pers)\b`;
+  const bs = String.raw`['�]?\\['�]?`;
+  const requiredRe = new RegExp(String.raw`\[\s*([A-Za-z_]\w*)\s*'?:='?\s*\]\s*<\s*${wrapper}[^>]*of\s+(\w+)\s*>`, 'gi');
+  const optNamedRe = new RegExp(String.raw`\[\s*${bs}\s*([A-Za-z_]\w*)\s*'?:='?\s*<\s*${wrapper}[^>]*of\s+(\w+)\s*>\s*\]`, 'gi');
+  const optSwitchRe = new RegExp(String.raw`\[\s*${bs}\s*([A-Za-z_]\w*)\s*(?:','\s*)?\](?!\s*<)`, 'gi');
 
-  // First sweep: optional named args
-  for (const m of syntax.matchAll(optNamedRe)) {
-    params.push({ name: '\\' + m[1], type: m[2], optional: true });
-  }
-  // Then required positional
+  // Collect every match with its position, then sort — this preserves call order.
+  const found = [];
   for (const m of syntax.matchAll(requiredRe)) {
-    params.push({ name: m[1], type: m[2], optional: false });
+    found.push({ at: m.index, end: m.index + m[0].length, name: m[1], type: m[2], optional: false });
   }
-  // Then optional switches (no value)
+  for (const m of syntax.matchAll(optNamedRe)) {
+    found.push({ at: m.index, end: m.index + m[0].length, name: '\\' + m[1], type: m[2], optional: true });
+  }
   for (const m of syntax.matchAll(optSwitchRe)) {
-    // Skip ones we already matched as optional named
-    if (params.some(p => p.name === '\\' + m[1])) { continue; }
-    params.push({ name: '\\' + m[1], type: 'switch', optional: true, switch: true });
+    found.push({ at: m.index, end: m.index + m[0].length, name: '\\' + m[1], type: 'switch', optional: true, switch: true });
+  }
+  found.sort((a, b) => a.at - b.at);
+
+  const params = [];
+  let prevEnd = -1;
+  for (const { at, end, ...p } of found) {
+    // Multi-page entries can repeat a fragment; alternatives (\V | \T) are
+    // distinct names — keep first occurrence of each name only.
+    if (params.some(q => q.name === p.name)) { prevEnd = end; continue; }
+    // A bare `|` between this match and the previous one marks an alternative.
+    // Anything besides separator characters in between (e.g. an unparsable
+    // bracket group) means these are NOT adjacent alternatives.
+    const between = prevEnd >= 0 ? syntax.slice(prevEnd, at) : '';
+    if (between.includes('|') && /^[\s|',]*$/.test(between)) { p.alt = true; }
+    params.push(p);
+    prevEnd = end;
   }
   return params;
 }

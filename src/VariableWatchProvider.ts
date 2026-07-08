@@ -49,7 +49,17 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
     private manager: MultiRobotManager,
     private context: vscode.ExtensionContext,
   ) {
-    this.watches = context.globalState.get<WatchEntry[]>(WATCH_STATE_KEY, []);
+    // Watches are per-workspace (different projects watch different robots).
+    // Versions up to 0.9.3 stored them in globalState — migrate those entries
+    // the first time a workspace has no list of its own. The global copy is
+    // left in place so other workspaces can seed from it too.
+    const ws = context.workspaceState.get<WatchEntry[]>(WATCH_STATE_KEY);
+    if (ws !== undefined) {
+      this.watches = ws;
+    } else {
+      this.watches = context.globalState.get<WatchEntry[]>(WATCH_STATE_KEY, []);
+      if (this.watches.length > 0) { void this.persist(); }
+    }
   }
 
   refresh(): void {
@@ -218,7 +228,7 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
     // Strip transient fields (value/error/lastUpdated) before storing — those
     // are recomputed on every poll and shouldn't bloat the persisted state.
     const stripped = this.watches.map(w => ({ task: w.task, module: w.module, symbol: w.symbol }));
-    await this.context.globalState.update(WATCH_STATE_KEY, stripped);
+    await this.context.workspaceState.update(WATCH_STATE_KEY, stripped);
   }
 
   private entryFromArg(arg: unknown): WatchEntry | undefined {

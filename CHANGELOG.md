@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.10.0 — 2026-07-09 — Real real-time on OmniCore, module source everywhere, CFG editing that saves
+
+### Fixed
+
+- **Live updates on OmniCore controllers are now actually live.** The bundled
+  client sent the RWS 1.0 WebSocket subprotocol to RWS 2.0 controllers, which
+  reject it — so every OmniCore connection has silently been on 1-second
+  polling since real-time shipped. With the corrected `rws_subscription`
+  handshake (client 0.8.0), state changes arrive as push events; dropped
+  sockets auto-reconnect, and if the stream is ever lost for good the
+  extension falls back to fast polling instead of going quiet.
+- **Opening module source works for every loaded module**
+  ([#3](https://github.com/ichbinmeraj/abb-rws-vscode/issues/3)) — modules
+  loaded from `.pgf`, RobotStudio, or the FlexPendant (no file in `HOME`) are
+  now recovered through a save → read → delete round-trip on the controller's
+  TEMP volume, on both IRC5 and OmniCore.
+- **Edit CFG Instance now writes back.** Saving the scratch `.cfg.jsonc`
+  document sends the edited attributes to the controller — to the robot the
+  instance was opened from, even if you switch the active robot before
+  saving. (The underlying CFG write endpoints were broken in the client on
+  both protocols and had never worked; fixed in client 0.8.0.)
+- **Create RAPID Task sent attribute names that don't exist** in the live
+  `SYS/CAB_TASKS` schema (`Task`, `Trust Level`, `Motion Task`); it now uses
+  the schema-verified names and value forms on both controller generations.
+- **Tool/WObj activation no longer assumes `ROB_1`** — the connected robot's
+  actual mechanical unit is used.
+- **`abbRobot.refreshInterval` now does something.** The setting existed but
+  was never read; it now controls the client's polling cadence (min 200 ms),
+  and changing it prompts for a window reload.
+- **RAPID signature help highlights the right parameter.** The language
+  database stored parameters optionals-first (and dropped most optional
+  arguments entirely); it is regenerated in call order with 21-parameter
+  instructions like `SearchL` fully recovered, and manual page footers
+  (copyright lines, page numbers) no longer leak into hover/completion text.
+- **`TASK PERS` declarations** are now indexed — outline, go-to-definition,
+  references, and inlay hints see task-persistent variables.
+- **Variable watches are per-workspace** (with a one-time migration from the
+  old global list) — different projects watching different cells no longer
+  share one list.
+- The `abbRobot.robots` settings schema now documents the `port` and
+  `useHttps` fields the extension itself persists.
+
+### Added
+
+- **`abbRobot.strictTls`** (default off) — verify controller TLS certificates
+  for plants that installed proper certs; off by default because controllers
+  ship self-signed.
+- **CI workflow** (build + typecheck) and `SECURITY.md`.
+
+### Internal
+
+- Bundles `abb-rws-client` 0.8.0 (`vendor/abb-rws-client-0.8.0.tgz`).
+
 ## 0.9.3 — 2026-07-03 — Real-hardware TLS fix + reproducible builds
 
 ### Fixed
