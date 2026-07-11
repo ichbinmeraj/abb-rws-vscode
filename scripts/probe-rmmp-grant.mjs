@@ -14,50 +14,30 @@
 // This probe never commands motion — it only requests/cancels RMMP and attempts a grant.
 //
 // Run:  node scripts/probe-rmmp-grant.js
-// Env:  HOST PORT  A_USER A_PASS  B_USER B_PASS  A_UID (override if auto-resolve fails)
+// Env:  RWS2_URL HOST PORT  A_USER A_PASS  B_USER B_PASS  A_UID (override if auto-resolve fails)
 
-const https = require('https');
+import { HOST, makeSession as makeBaseSession } from './lib/probe-common.mjs';
 
-const HOST = process.env.HOST || '127.0.0.1';
 const A_USER = process.env.A_USER || 'Default User';
 const A_PASS = process.env.A_PASS || 'robotics';
 const B_USER = process.env.B_USER || 'Admin';
 const B_PASS = process.env.B_PASS || 'robotics';
-const httpsAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
 
-let port = Number(process.env.PORT) || 0;
-
-function makeSession(user, pass) {
-  const auth = 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64');
-  let cookie = null;
-  function req(method, path, body) {
-    return new Promise(resolve => {
-      const headers = { Authorization: auth, Accept: 'application/xhtml+xml;v=2.0' };
-      if (cookie) { headers.Cookie = cookie; }
-      if (body !== undefined) {
-        headers['Content-Type'] = 'application/x-www-form-urlencoded;v=2.0';
-        headers['Content-Length'] = Buffer.byteLength(body);
-      }
-      const r = https.request({
-        host: HOST, port, path, method, headers, agent: httpsAgent, rejectUnauthorized: false,
-      }, res => {
-        let d = '';
-        res.on('data', c => { d += c; });
-        res.on('end', () => {
-          const sc = res.headers['set-cookie'];
-          if (sc) {
-            const ct = sc.find(c => /^(-http-session-|ABBCX|http-session)=/.test(c));
-            if (ct) { cookie = ct.split(';')[0]; }
-          }
-          resolve({ status: res.statusCode, body: d });
-        });
-      });
-      r.on('error', e => resolve({ status: 0, body: '', error: e.message }));
-      if (body !== undefined) { r.write(body); }
-      r.end();
-    });
+async function resolveBase() {
+  if (process.env.RWS2_URL) { return new URL(process.env.RWS2_URL); }
+  if (process.env.PORT) { return new URL(`https://${HOST}:${process.env.PORT}`); }
+  // A bare TCP check matches unrelated services — issue an actual request.
+  for (const p of [9403, 5466, 443, 11811]) {
+    const probe = makeBaseSession(`https://${HOST}:${p}`, { user: A_USER, pass: A_PASS });
+    const t = await probe.req('GET', '/rw/system/robottype');
+    if (t.status && t.status >= 100) { return probe.url; }
   }
-  return { user, req };
+  return null;
+}
+
+function makeUserSession(base, user, pass) {
+  const s = makeBaseSession(base, { user, pass });
+  return { user, req: s.req, logout: s.logout };
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -77,25 +57,16 @@ function findUid(body) {
 }
 
 async function main() {
-  const A = makeSession(A_USER, A_PASS);
-  const B = makeSession(B_USER, B_PASS);
-
-  if (!port) {
-    // Verify a real RWS 2.0 (HTTPS) controller answers — a bare TCP check matches
-    // unrelated services (e.g. Windows HTTP.sys on :80), so issue an actual request.
-    for (const p of [9403, 5466, 443, 11811]) {
-      port = p;
-      const t = await A.req('GET', '/rw/system/robottype');
-      if (t.status && t.status >= 100) { break; }
-      port = 0;
-    }
-    if (!port) {
-      console.error('No RWS 2.0 controller answered on ' + HOST + ' (tried 9403, 5466, 443, 11811).');
-      console.error('Start the OmniCore VC in RobotStudio, or pass HOST=… PORT=… explicitly.');
-      process.exit(1);
-    }
+  const base = await resolveBase();
+  if (!base) {
+    console.error('No RWS 2.0 controller answered on ' + HOST + ' (tried 9403, 5466, 443, 11811).');
+    console.error('Start the OmniCore VC in RobotStudio, or pass RWS2_URL=… explicitly.');
+    process.exit(1);
   }
-  console.log(`\n=== RMMP headless-grant probe — ${HOST}:${port} ===`);
+  const A = makeUserSession(base, A_USER, A_PASS);
+  const B = makeUserSession(base, B_USER, B_PASS);
+
+  console.log(`\n=== RMMP headless-grant probe — ${base.host} ===`);
   console.log(`  A (requester) = ${A_USER}`);
   console.log(`  B (approver)  = ${B_USER}\n`);
 
@@ -153,8 +124,8 @@ async function main() {
   // teardown
   console.log('\n── teardown ──');
   await A.req('POST', '/users/rmmp/cancel', ''); await sleep(80);
-  await A.req('GET', '/logout');
-  await B.req('GET', '/logout');
+  await A.logout();
+  await B.logout();
   console.log('Done.\n');
 }
 

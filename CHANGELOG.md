@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.0 — 2026-07-11 — Network discovery, secure credentials, simulation panel
+
+The first stable release. Everything below is live-verified against both
+controller generations (IRC5 RW6.16 + OmniCore RW7.21).
+
+### Added
+
+- **Automatic controller discovery.** The add-robot flow now finds controllers
+  on your network over mDNS/Bonjour — pick one from the list instead of typing
+  a host and port. New command **ABB Robot: Discover Controllers (mDNS)**.
+  This finds RobotStudio's randomly-assigned virtual-controller ports for you.
+- **Passwords moved to secure storage.** Controller passwords now live in VS
+  Code's `SecretStorage` instead of plaintext in settings (which Settings Sync
+  copied to the cloud). Existing passwords are migrated automatically on first
+  launch and removed from the settings file.
+- **Simulation panel** (virtual controllers) — six commands to drive the safety
+  chain and reposition the simulated robot from VS Code: **Simulate E-Stop**,
+  **Reset Simulated E-Stop**, **Simulate General Stop Toggle**, **Simulate Auto
+  Stop Toggle**, **Simulate Enable Switch**, and **Teleport Robot to Joints…**
+  (pre-filled with the robot's current pose).
+
+### Internal
+
+- Bundles `abb-rws-client` 1.0.0 (`vendor/abb-rws-client-1.0.0.tgz`) — adds
+  HAL-JSON parsing for RWS 2.0, mDNS discovery, and the simulation-panel API.
+
 ## 0.10.0 — 2026-07-09 — Real real-time on OmniCore, module source everywhere, CFG editing that saves
 
 ### Fixed

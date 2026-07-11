@@ -2,27 +2,19 @@
 // Auto-detects the IRC5 VC port. Read-only — no state changes.
 //
 // Run:  node test-rws1-full.js
-// Or with a specific port:  PORT=11811 node test-rws1-full.js
+// Or with a specific controller:  RWS1_URL=http://127.0.0.1:23308 node test-rws1-full.js
+// Or with a specific port:        PORT=11811 node test-rws1-full.js
 //
 import { RwsClient } from "abb-rws-client";
-import * as net from "node:net";
+import { RWS1_URL, RWS_USER as USER, RWS_PASS as PASS, tcpPing } from "./scripts/lib/probe-common.mjs";
 
 // ─── Auto-detect IRC5 VC port ──────────────────────────────────────────────
-async function tcpPing(port, timeoutMs = 200) {
-  return new Promise(r => {
-    const s = new net.Socket();
-    s.setTimeout(timeoutMs);
-    s.once("connect", () => { s.destroy(); r(true); });
-    s.once("timeout", () => { s.destroy(); r(false); });
-    s.once("error",   () => { s.destroy(); r(false); });
-    s.connect(port, "127.0.0.1");
-  });
-}
-const USER = process.env.RWS_USER || "Default User";
-const PASS = process.env.RWS_PASS || "robotics";
+const BASE = RWS1_URL ? new URL(RWS1_URL) : null;
+const HOST = BASE?.hostname ?? "127.0.0.1";
+
 async function isRWS1(port) {
   try {
-    const c = new RwsClient({ host: "127.0.0.1", port, timeout: 2000, username: USER, password: PASS });
+    const c = new RwsClient({ host: HOST, port, timeout: 2000, username: USER, password: PASS });
     await c.connect();
     return c;
   } catch { return null; }
@@ -30,7 +22,7 @@ async function isRWS1(port) {
 async function findIRC5() {
   // Common ports first
   for (const p of [11811, 26417, 80, 28447, 16146, 11342, 11343]) {
-    if (await tcpPing(p, 250)) {
+    if (await tcpPing(p, HOST, 250)) {
       const c = await isRWS1(p);
       if (c) return { port: p, client: c };
     }
@@ -38,7 +30,7 @@ async function findIRC5() {
   // Wide scan — RobotStudio sometimes assigns ports >30000 (seen 50718 live).
   console.log("  (wide-scanning 1024-65535…)");
   for (let p = 1024; p <= 65535; p++) {
-    if (await tcpPing(p, 80)) {
+    if (await tcpPing(p, HOST, 80)) {
       const c = await isRWS1(p);
       if (c) return { port: p, client: c };
     }
@@ -47,7 +39,7 @@ async function findIRC5() {
 }
 
 console.log("Looking for IRC5 VC…");
-const PORT = process.env.PORT ? +process.env.PORT : null;
+const PORT = process.env.PORT ? +process.env.PORT : (BASE ? (Number(BASE.port) || 80) : null);
 let found;
 if (PORT) {
   const c = await isRWS1(PORT);
@@ -60,7 +52,7 @@ if (!found) {
   process.exit(1);
 }
 const { port, client } = found;
-console.log(`Found IRC5 on 127.0.0.1:${port}\n`);
+console.log(`Found IRC5 on ${HOST}:${port}\n`);
 
 // ─── Test runner ────────────────────────────────────────────────────────────
 const passed = [], failed = [];

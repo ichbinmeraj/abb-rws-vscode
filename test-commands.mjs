@@ -2,42 +2,12 @@
  * RWS2Adapter and the same data flow each command takes.
  *
  * Run: node test-commands.js
+ * Env: RWS2_URL RWS_USER RWS_PASS (see scripts/lib/probe-common.mjs)
  */
-const https = require('https');
+import { RWS2_URL, makeSession } from './scripts/lib/probe-common.mjs';
 
-const HOST = '127.0.0.1';
-const PORT = 5466;
-const AUTH = 'Basic ' + Buffer.from('Default User:robotics').toString('base64');
-const agent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
-let cookie = null;
-
-function req(method, path, body) {
-  return new Promise(resolve => {
-    const opts = {
-      method, hostname: HOST, port: PORT, path, agent,
-      headers: {
-        Authorization: AUTH,
-        Accept: 'application/xhtml+xml;v=2.0',
-        ...(cookie ? { Cookie: cookie } : {}),
-        ...((method === 'POST' || method === 'PUT' || method === 'DELETE') ? {
-          'Content-Type': 'application/x-www-form-urlencoded;v=2.0',
-          'Content-Length': String(body ? Buffer.byteLength(body) : 0),
-        } : {}),
-      },
-    };
-    const r = https.request(opts, res => {
-      const sc = res.headers['set-cookie'];
-      if (sc && !cookie) cookie = sc.map(c => c.split(';')[0]).join('; ');
-      let raw = '';
-      res.on('data', c => raw += c);
-      res.on('end', () => resolve({ status: res.statusCode, body: raw }));
-    });
-    r.on('error', e => resolve({ status: 0, body: e.message }));
-    r.setTimeout(5000, () => { r.destroy(); resolve({ status: 0, body: 'timeout' }); });
-    if (body) r.write(body);
-    r.end();
-  });
-}
+const session = makeSession(RWS2_URL, { timeoutMs: 5000 });
+const req = session.req;
 
 class XhtmlParser {
   constructor(html) { this.html = html; }
@@ -242,4 +212,6 @@ function header(t) {
     console.log('\nStill failing:');
     for (const f of fails) console.log(`  ${FAIL} ${f.name}`);
   }
+
+  await session.logout();
 })();

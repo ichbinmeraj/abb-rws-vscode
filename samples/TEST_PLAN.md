@@ -324,7 +324,7 @@ If all 7 work, the extension is healthy.
 
 1. Check the **ABB Robot output channel** (`View → Output → ABB Robot`).
    Every connect / poll / disconnect is logged with timestamp + reason.
-2. Run `node test-everything.js` from the project root — verifies all 63
+2. Run `node test-everything.mjs` from the project root — verifies all 63
    live data paths against the connected controller.
 3. Compare the failing endpoint against `docs/RWS_COVERAGE.md` — known
    blockers and their reasons are documented there.

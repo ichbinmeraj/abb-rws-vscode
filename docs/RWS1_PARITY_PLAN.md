@@ -210,6 +210,6 @@ After this session:
 
 ## Verification
 
-For each stage, run a parallel of `test-everything.js` against the IRC5 VC.
+For each stage, run a parallel of `test-everything.mjs` against the IRC5 VC.
 At the end of this session: `test-rws1-everything.js` should report ≥ 90 / 90
 on the live IRC5.

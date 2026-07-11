@@ -5,106 +5,36 @@
 // Run:  node test-rws2-writes.js
 // Or with a specific port:  PORT=9403 node test-rws2-writes.js
 //
-const https = require('https');
-const http = require('http');
-const net = require('net');
+// Env: RWS2_URL RWS_USER RWS_PASS HOST PORT (see scripts/lib/probe-common.mjs)
+import * as fs from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { HOST, RWS_USER, makeSession, tcpPing } from './scripts/lib/probe-common.mjs';
 
-const HOST = process.env.HOST || '127.0.0.1';
-const USER = process.env.RWS_USER || 'Default User';
-const PASS = process.env.RWS_PASS || 'robotics';
-const AUTH = 'Basic ' + Buffer.from(`${USER}:${PASS}`).toString('base64');
+const USER = RWS_USER;
 
-let sessionCookie = null;
-let isHttps = true;
+let session = null;
+const req = (method, _port, path, body) => session.req(method, path, body);
+const reqRaw = (method, _port, path, rawBody, contentType) =>
+  session.req(method, path, rawBody, { contentType: contentType || 'text/plain;v=2.0' });
 
-const httpsAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
-const httpAgent  = new http.Agent({ keepAlive: true });
-
-function req(method, port, path, body) {
-  return new Promise(resolve => {
-    const headers = {
-      Authorization: AUTH,
-      Accept: 'application/xhtml+xml;v=2.0',
-    };
-    if (sessionCookie) { headers.Cookie = sessionCookie; }
-    if (body !== undefined) {
-      headers['Content-Type'] = 'application/x-www-form-urlencoded;v=2.0';
-      headers['Content-Length'] = String(Buffer.byteLength(body));
-    } else if (method !== 'GET') {
-      headers['Content-Type'] = 'application/x-www-form-urlencoded;v=2.0';
-      headers['Content-Length'] = '0';
-    }
-    const opts = { method, hostname: HOST, port, path, headers, agent: isHttps ? httpsAgent : httpAgent };
-    const transport = isHttps ? https : http;
-    const r = transport.request(opts, res => {
-      const setCookies = res.headers['set-cookie'];
-      if (setCookies && !sessionCookie) {
-        sessionCookie = setCookies.map(c => c.split(';')[0]).join('; ');
-      }
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8'), headers: res.headers }));
-    });
-    r.on('error', e => resolve({ status: 0, body: e.message }));
-    r.setTimeout(8000, () => { r.destroy(); resolve({ status: 0, body: 'timeout' }); });
-    if (body !== undefined) { r.write(body); }
-    r.end();
-  });
+async function tryBase(url) {
+  const probe = makeSession(url);
+  const r = await probe.req('GET', '/rw/system');
+  if (r.status === 200 || r.status === 401) { return probe; }
+  return null;
 }
 
-async function reqRaw(method, port, path, rawBody, contentType) {
-  return new Promise(resolve => {
-    const headers = {
-      Authorization: AUTH,
-      Accept: 'application/xhtml+xml;v=2.0',
-    };
-    if (sessionCookie) { headers.Cookie = sessionCookie; }
-    if (rawBody !== undefined) {
-      headers['Content-Type'] = contentType || 'text/plain;v=2.0';
-      headers['Content-Length'] = String(Buffer.byteLength(rawBody));
-    }
-    const opts = { method, hostname: HOST, port, path, headers, agent: isHttps ? httpsAgent : httpAgent };
-    const transport = isHttps ? https : http;
-    const r = transport.request(opts, res => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
-    });
-    r.on('error', e => resolve({ status: 0, body: e.message }));
-    r.setTimeout(8000, () => { r.destroy(); resolve({ status: 0, body: 'timeout' }); });
-    if (rawBody !== undefined) { r.write(rawBody); }
-    r.end();
-  });
-}
-
-function tcpPing(port) {
-  return new Promise(resolve => {
-    const s = new net.Socket();
-    s.setTimeout(300);
-    s.once('connect', () => { s.destroy(); resolve(true); });
-    s.once('timeout', () => { s.destroy(); resolve(false); });
-    s.once('error',   () => { s.destroy(); resolve(false); });
-    s.connect(port, HOST);
-  });
-}
-
-async function tryRWS2(port, https) {
-  isHttps = https;
-  sessionCookie = null;
-  const r = await req('GET', port, '/rw/system');
-  return r.status === 200 || r.status === 401;
-}
-
-async function findPort() {
+async function findBase() {
+  if (process.env.RWS2_URL) { return tryBase(process.env.RWS2_URL); }
+  if (process.env.PORT) {
+    const p = +process.env.PORT;
+    return (await tryBase(`https://${HOST}:${p}`)) || (await tryBase(`http://${HOST}:${p}`));
+  }
   // RWS 2.0 ports we've seen live
-  for (const [p, https] of [[5466, true], [9403, true], [443, true], [80, false]]) {
+  for (const [p, useHttps] of [[5466, true], [9403, true], [443, true], [80, false]]) {
     if (await tcpPing(p)) {
-      isHttps = https;
-      sessionCookie = null;
-      const r = await req('GET', p, '/rw/system');
-      if (r.status === 200 || r.status === 401) {
-        return { port: p, https };
-      }
+      const s = await tryBase(`${useHttps ? 'https' : 'http'}://${HOST}:${p}`);
+      if (s) { return s; }
     }
   }
   // Wide scan
@@ -112,14 +42,8 @@ async function findPort() {
   for (let p = 1024; p <= 65535; p++) {
     if (await tcpPing(p)) {
       // Try HTTPS first (more common for OmniCore)
-      isHttps = true;
-      sessionCookie = null;
-      let r = await req('GET', p, '/rw/system');
-      if (r.status === 200 || r.status === 401) return { port: p, https: true };
-      isHttps = false;
-      sessionCookie = null;
-      r = await req('GET', p, '/rw/system');
-      if (r.status === 200 || r.status === 401) return { port: p, https: false };
+      const s = (await tryBase(`https://${HOST}:${p}`)) || (await tryBase(`http://${HOST}:${p}`));
+      if (s) { return s; }
     }
   }
   return null;
@@ -128,34 +52,17 @@ async function findPort() {
 // ─── Main ──────────────────────────────────────────────────────────────────
 (async () => {
   console.log("Looking for OmniCore VC…");
-  let found;
-  if (process.env.PORT) {
-    const p = +process.env.PORT;
-    isHttps = true;
-    sessionCookie = null;
-    let r = await req('GET', p, '/rw/system');
-    if (r.status === 200 || r.status === 401) { found = { port: p, https: true }; }
-    else {
-      isHttps = false;
-      sessionCookie = null;
-      r = await req('GET', p, '/rw/system');
-      if (r.status === 200 || r.status === 401) { found = { port: p, https: false }; }
-    }
-  } else {
-    found = await findPort();
-  }
-  if (!found) {
+  session = await findBase();
+  if (!session) {
     console.error("\nNo OmniCore VC reachable. Start your VC in RobotStudio and try again.");
     process.exit(1);
   }
-  isHttps = found.https;
-  const PORT = found.port;
-  console.log(`Found OmniCore on ${HOST}:${PORT} (${isHttps ? 'HTTPS' : 'HTTP'}) as ${USER}\n`);
+  const PORT = Number(session.url.port) || (session.url.protocol === 'https:' ? 443 : 80);
+  console.log(`Found OmniCore on ${session.url.host} (${session.url.protocol === 'https:' ? 'HTTPS' : 'HTTP'}) as ${USER}\n`);
 
   // Establish session cookie
-  sessionCookie = null;
   await req('GET', PORT, '/rw/system');
-  if (!sessionCookie) {
+  if (!session.cookie) {
     console.error("No session cookie issued — auth may have failed.");
     process.exit(1);
   }
@@ -369,8 +276,7 @@ async function findPort() {
   console.log(" Module load / unload (TestExtension.mod)");
   console.log("═".repeat(70));
 
-  const fs = require('fs/promises');
-  const MOD_LOCAL  = "D:/abb-rws-vscode/samples/TestExtension.mod";
+  const MOD_LOCAL  = fileURLToPath(new URL("./samples/TestExtension.mod", import.meta.url));
   const MOD_REMOTE = "/fileservice/HOME/TestExtension.mod";
   let modSrc;
 

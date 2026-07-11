@@ -4,43 +4,11 @@
 //   - /rw/safety/...
 //   - /rw/iosystem/signals on safety signals (ES1, AS1, etc.)
 
-const https = require('https');
-const httpsAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
+// Env: RWS2_URL RWS_USER RWS_PASS (see scripts/lib/probe-common.mjs)
+import { RWS2_URL, makeSession, sleep } from './lib/probe-common.mjs';
 
-let cookie = null;
-function req(method, path, body) {
-  return new Promise(resolve => {
-    const headers = {
-      Authorization: 'Basic ' + Buffer.from('Default User:robotics').toString('base64'),
-      Accept: 'application/xhtml+xml;v=2.0',
-    };
-    if (cookie) { headers.Cookie = cookie; }
-    if (body !== undefined) {
-      headers['Content-Type'] = 'application/x-www-form-urlencoded;v=2.0';
-      headers['Content-Length'] = Buffer.byteLength(body);
-    }
-    const r = https.request({
-      host: '127.0.0.1', port: 5466, path, method, headers,
-      agent: httpsAgent, rejectUnauthorized: false,
-    }, res => {
-      let d = '';
-      res.on('data', c => { d += c; });
-      res.on('end', () => {
-        const sc = res.headers['set-cookie'];
-        if (sc) {
-          const ct = sc.find(c => /^(-http-session-|ABBCX|http-session)=/.test(c));
-          if (ct) { cookie = ct.split(';')[0]; }
-        }
-        resolve({ status: res.statusCode, body: d });
-      });
-    });
-    r.on('error', e => resolve({ status: 0, error: e.message }));
-    if (body !== undefined) { r.write(body); }
-    r.end();
-  });
-}
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const session = makeSession(RWS2_URL);
+const req = session.req;
 
 async function tryEP(method, path, body) {
   const r = await req(method, path, body);
@@ -92,5 +60,5 @@ async function tryEP(method, path, body) {
   const m2 = cs2.body.match(/<span class="ctrlstate">([^<]+)<\/span>/);
   console.log(`Final ctrl-state: ${m2 ? m2[1] : '?'}`);
 
-  await req('GET', '/logout');
+  await session.logout();
 })();

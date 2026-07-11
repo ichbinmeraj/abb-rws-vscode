@@ -15,46 +15,28 @@
 //
 // Run:  node scripts/probe-moveinauto-token.js
 //       ATTEMPT_MOTION=1 node scripts/probe-moveinauto-token.js   (also tries a jog)
-// Env:  HOST PORT RWS_USER RWS_PASS
+// Env:  RWS2_URL HOST PORT RWS_USER RWS_PASS (see scripts/lib/probe-common.mjs)
 
-const https = require('https');
+import { HOST, RWS_USER, makeSession } from './lib/probe-common.mjs';
 
-const HOST = process.env.HOST || '127.0.0.1';
-const USER = process.env.RWS_USER || 'Default User';
-const PASS = process.env.RWS_PASS || 'robotics';
+const USER = RWS_USER;
 const ATTEMPT_MOTION = /^(1|true|yes)$/i.test(process.env.ATTEMPT_MOTION || '');
-const AUTH = 'Basic ' + Buffer.from(`${USER}:${PASS}`).toString('base64');
-const httpsAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
 
-let sessionCookie = null;
-let port = Number(process.env.PORT) || 0;
+let session = null;
+const req = (method, path, body, extraHeaders) =>
+  session.req(method, path, body, extraHeaders ? { headers: extraHeaders } : undefined);
 
-function req(method, path, body, extraHeaders) {
-  return new Promise(resolve => {
-    const headers = { Authorization: AUTH, Accept: 'application/xhtml+xml;v=2.0', ...(extraHeaders || {}) };
-    if (sessionCookie) { headers.Cookie = sessionCookie; }
-    if (body !== undefined) {
-      headers['Content-Type'] = 'application/x-www-form-urlencoded;v=2.0';
-      headers['Content-Length'] = Buffer.byteLength(body);
-    }
-    const r = https.request({
-      host: HOST, port, path, method, headers, agent: httpsAgent, rejectUnauthorized: false,
-    }, res => {
-      let data = '';
-      res.on('data', c => { data += c; });
-      res.on('end', () => {
-        const sc = res.headers['set-cookie'];
-        if (sc) {
-          const ct = sc.find(c => /^(-http-session-|ABBCX|http-session)=/.test(c));
-          if (ct) { sessionCookie = ct.split(';')[0]; }
-        }
-        resolve({ status: res.statusCode, body: data, headers: res.headers });
-      });
-    });
-    r.on('error', e => resolve({ status: 0, body: '', error: e.message }));
-    if (body !== undefined) { r.write(body); }
-    r.end();
-  });
+async function resolveBase() {
+  if (process.env.RWS2_URL) { return new URL(process.env.RWS2_URL); }
+  if (process.env.PORT) { return new URL(`https://${HOST}:${process.env.PORT}`); }
+  // Verify a real RWS 2.0 (HTTPS) controller answers — a bare TCP check matches
+  // unrelated services (e.g. Windows HTTP.sys on :80), so issue an actual request.
+  for (const p of [9403, 5466, 443, 11811]) {
+    const probe = makeSession(`https://${HOST}:${p}`);
+    const t = await probe.req('GET', '/rw/system/robottype');
+    if (t.status && t.status >= 100) { return probe.url; }
+  }
+  return null;
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -77,22 +59,14 @@ const show = (label, r) => {
 };
 
 async function main() {
-  if (!port) {
-    // Verify a real RWS 2.0 (HTTPS) controller answers — a bare TCP check matches
-    // unrelated services (e.g. Windows HTTP.sys on :80), so issue an actual request.
-    for (const p of [9403, 5466, 443, 11811]) {
-      port = p;
-      const t = await req('GET', '/rw/system/robottype');
-      if (t.status && t.status >= 100) { break; }
-      port = 0;
-    }
-    if (!port) {
-      console.error('No RWS 2.0 controller answered on ' + HOST + ' (tried 9403, 5466, 443, 11811).');
-      console.error('Start the OmniCore VC in RobotStudio, or pass HOST=… PORT=… explicitly.');
-      process.exit(1);
-    }
+  const base = await resolveBase();
+  if (!base) {
+    console.error('No RWS 2.0 controller answered on ' + HOST + ' (tried 9403, 5466, 443, 11811).');
+    console.error('Start the OmniCore VC in RobotStudio, or pass RWS2_URL=… explicitly.');
+    process.exit(1);
   }
-  console.log(`\n=== moveinauto/token probe — ${HOST}:${port} as ${USER} ===`);
+  session = makeSession(base, { user: USER });
+  console.log(`\n=== moveinauto/token probe — ${base.host} as ${USER} ===`);
   console.log(`ATTEMPT_MOTION=${ATTEMPT_MOTION}\n`);
 
   // ── PASS 1: reconnaissance (read-only) ──────────────────────────────────────
@@ -173,7 +147,7 @@ async function main() {
   show('users/rmmp/cancel', await req('POST', '/users/rmmp/cancel', '')); await sleep(80);
   show('mastership/motion/release', await req('POST', '/rw/mastership/motion/release', '')); await sleep(80);
   show('mastership/edit/release', await req('POST', '/rw/mastership/edit/release', '')); await sleep(80);
-  await req('GET', '/logout');
+  await session.logout();
   console.log('\nDone.\n');
 }
 

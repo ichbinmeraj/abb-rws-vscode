@@ -1,82 +1,33 @@
 /* RWS endpoint coverage test — runs against live VCs, reuses one session.
  * Usage: node test-coverage.js
- *
- * Reads OMNICORE_PORT/IRC5_PORT from env or auto-discovers (5466/9403/443/etc.)
+ * Env: RWS2_URL RWS1_URL RWS_USER RWS_PASS HOST (see scripts/lib/probe-common.mjs)
+ * Without RWS2_URL/RWS1_URL it auto-discovers a controller (5466/9403/443/etc.)
  */
-const https = require('https');
-const http = require('http');
-const net = require('net');
-
-const HOST = process.env.HOST || '127.0.0.1';
-const USER = 'Default User';
-const PASS = 'robotics';
-const AUTH = 'Basic ' + Buffer.from(USER + ':' + PASS).toString('base64');
+import { HOST, RWS1_URL, makeSession, tcpPing } from './scripts/lib/probe-common.mjs';
 
 const results = [];
-let sessionCookie = null;
+let session = null;
+const req = (method, _port, path, body) => session.req(method, path, body);
 
-const httpsAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
-const httpAgent = new http.Agent({ keepAlive: true });
-
-function req(method, port, path, body) {
-  return new Promise(resolve => {
-    const isHttps = port === 443 || port === 5466 || port === 9403;
-    const url = `${isHttps ? 'https' : 'http'}://${HOST}:${port}${path}`;
-    const opts = {
-      method, hostname: HOST, port, path,
-      headers: {
-        Authorization: AUTH,
-        Accept: 'application/xhtml+xml;v=2.0',
-        ...(sessionCookie ? { Cookie: sessionCookie } : {}),
-        ...(body !== undefined ? {
-          'Content-Type': 'application/x-www-form-urlencoded;v=2.0',
-          'Content-Length': String(Buffer.byteLength(body)),
-        } : (method === 'POST' || method === 'PUT' || method === 'DELETE' ? {
-          'Content-Type': 'application/x-www-form-urlencoded;v=2.0',
-          'Content-Length': '0',
-        } : {})),
-      },
-      agent: isHttps ? httpsAgent : httpAgent,
-    };
-    const transport = isHttps ? https : http;
-    const r = transport.request(opts, res => {
-      const setCookies = res.headers['set-cookie'];
-      if (setCookies && !sessionCookie) {
-        sessionCookie = setCookies.map(c => c.split(';')[0]).join('; ');
-      }
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        const raw = Buffer.concat(chunks).toString('utf8');
-        resolve({ status: res.statusCode, body: raw, url });
-      });
-    });
-    r.on('error', e => resolve({ status: 0, body: e.message, url }));
-    r.setTimeout(5000, () => { r.destroy(); resolve({ status: 0, body: 'timeout', url }); });
-    if (body !== undefined) { r.write(body); }
-    r.end();
-  });
-}
-
-function tcpPing(port) {
-  return new Promise(resolve => {
-    const s = new net.Socket();
-    s.setTimeout(300);
-    s.once('connect', () => { s.destroy(); resolve(true); });
-    s.once('timeout', () => { s.destroy(); resolve(false); });
-    s.once('error', () => { s.destroy(); resolve(false); });
-    s.connect(port, HOST);
-  });
-}
-
-async function findPort() {
-  // Try standard + a few common observed ports first
-  for (const p of [5466, 9403, 443, 11811, 16146, 28447, 80]) {
-    if (await tcpPing(p)) {
-      const r = await req('GET', p, '/rw/system');
-      if (r.status === 200 || r.status === 401 || r.status === 503) {
-        return { port: p, https: p === 443 || p === 5466 || p === 9403 };
-      }
+async function findBase() {
+  const candidates = [];
+  if (process.env.RWS2_URL) { candidates.push(process.env.RWS2_URL); }
+  if (RWS1_URL) { candidates.push(RWS1_URL); }
+  if (candidates.length === 0) {
+    // Standard + a few common observed ports; 443/5466/9403 are HTTPS
+    for (const p of [5466, 9403, 443, 11811, 16146, 28447, 80]) {
+      const scheme = (p === 443 || p === 5466 || p === 9403) ? 'https' : 'http';
+      candidates.push(`${scheme}://${HOST}:${p}`);
+    }
+  }
+  for (const cand of candidates) {
+    const url = new URL(cand);
+    const port = Number(url.port) || (url.protocol === 'https:' ? 443 : 80);
+    if (!(await tcpPing(port, url.hostname))) { continue; }
+    const probe = makeSession(url, { timeoutMs: 5000 });
+    const r = await probe.req('GET', '/rw/system');
+    if (r.status === 200 || r.status === 401 || r.status === 503) {
+      return { url, port, https: url.protocol === 'https:', session: probe };
     }
   }
   return null;
@@ -95,15 +46,16 @@ async function test(label, fn) {
 }
 
 (async () => {
-  console.log(`Testing ${HOST}…`);
-  const found = await findPort();
+  const found = await findBase();
   if (!found) { console.log('No controller reachable.'); process.exit(1); }
+  session = found.session;
   const PORT = found.port;
+  console.log(`Testing ${found.url.hostname}…`);
   console.log(`Found controller on port ${PORT} (${found.https ? 'HTTPS' : 'HTTP'})`);
 
   // Establish session
   await req('GET', PORT, '/rw/system');
-  console.log(`Session cookie acquired: ${sessionCookie ? 'yes' : 'no'}`);
+  console.log(`Session cookie acquired: ${session.cookie ? 'yes' : 'no'}`);
   console.log('Running tests...\n');
 
   // === Wave 1: System / Panel / Motion / RAPID detail ===
@@ -197,4 +149,6 @@ async function test(label, fn) {
   for (const [code, n] of Object.entries(byCode).sort()) {
     console.log(`HTTP ${code}: ${n} endpoint(s)`);
   }
+
+  await session.logout();
 })();

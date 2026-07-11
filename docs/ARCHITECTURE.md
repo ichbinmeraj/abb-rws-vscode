@@ -266,11 +266,11 @@ rapid/edit/motion/pp paths) get a 3-button dialog: **Request Remote Control** (c
 - **RAPID tasks are CFG, not runtime**: `createRapidTask` writes `SYS/CAB_TASKS` and needs
   a controller restart before the task appears (`extension.ts:2063-2077`).
 - **Dynamically loaded modules don't enter the runtime symbol table** until a `.pgf` build
-  or restart on RW6.16 (`test-rws1-writes.js:323-327`); `org_code 3500` = "Routine main
+  or restart on RW6.16 (`test-rws1-writes.mjs:323-327`); `org_code 3500` = "Routine main
   not found" when no program is built.
 - **`writeSignal` needs RMMP=modify even in AUTO** on the VC (403 "Rejected" otherwise) —
-  documented identically in both write-test scripts (`test-rws1-writes.js:453`,
-  `test-rws2-writes.js:553`).
+  documented identically in both write-test scripts (`test-rws1-writes.mjs:453`,
+  `test-rws2-writes.mjs:553`).
 - **Signature-help highlights the wrong parameter**: `parse-rapid-manual.mjs` stores
   parameters optional-first, not call-order (L243-256), so e.g. `AccSet`'s stored order is
   `[\FinePointRamp, Acc, Ramp]`. Fixing needs a re-run of the parse script.
@@ -303,12 +303,12 @@ live-test scripts run manually against the two VCs:
 
 | Script | Target | Port | What |
 |---|---|---|---|
-| `test-everything.js` | RWS 2.0 | `127.0.0.1:5466` (hard) | ~80 read endpoints, XHTML parse asserts |
-| `test-commands.js` | RWS 2.0 | `:5466` (hard) | mimics each command's data flow |
-| `test-coverage.js` | either | auto-discover | reachability sweep by status code |
-| `test-rws1-full.js` | RWS 1.0 | auto (wide scan) | read sweep via `RwsClient` |
-| `test-rws1-writes.js` | RWS 1.0 | auto | write verification, state-restoring |
-| `test-rws2-writes.js` | RWS 2.0 | auto | write verification, `edit`/`motion` mastership |
+| `test-everything.mjs` | RWS 2.0 | `127.0.0.1:5466` (hard) | ~80 read endpoints, XHTML parse asserts |
+| `test-commands.mjs` | RWS 2.0 | `:5466` (hard) | mimics each command's data flow |
+| `test-coverage.mjs` | either | auto-discover | reachability sweep by status code |
+| `test-rws1-full.mjs` | RWS 1.0 | auto (wide scan) | read sweep via `RwsClient` |
+| `test-rws1-writes.mjs` | RWS 1.0 | auto | write verification, state-restoring |
+| `test-rws2-writes.mjs` | RWS 2.0 | auto | write verification, `edit`/`motion` mastership |
 | `scripts/probe-*.js` | mostly RWS 2.0 | mostly `:5466` (hard) | one-off protocol reverse-engineering |
 
 The `probe-*.js` scripts encode a research campaign — *can remote control / op-mode change
@@ -340,7 +340,7 @@ hardcode `D:/abb-rws-vscode/samples/TestExtension.mod`.
 | 15 | TextMate grammar accepts `TASK PERS` but `RapidLanguageIndex` only accepts `LOCAL` — `TASK`-scoped decls highlight but are invisible to outline/definition/references/inlay-hints | `rapid.tmLanguage.json:64-76` vs `RapidLanguageIndex.ts:132-134` |
 | 16 | Walkthrough media (`connect.md`, `open.md`, `watch.md`) still describe the pre-0.9.2 11-panel layout | `media/walkthrough/*.md` |
 | 17 | Module-name detection is implemented three ways with different scopes (hover: whole doc; codelens: first 30 lines; index: line-by-line) | `RapidHoverProvider.ts:94`, `RapidCodeLensProvider.ts:89`, `RapidLanguageIndex.ts:165` |
-| 18 | `scripts/probe-moveinauto-token.js` and `probe-rmmp-grant.js` are untracked (new files) in the git repo | `git status` |
+| 18 | `scripts/probe-moveinauto-token.mjs` and `probe-rmmp-grant.mjs` are untracked (new files) in the git repo | `git status` |
 | 19 | **`abbRobot.refreshInterval` is dead config** — declared (default 1000 ms, min 200) but read nowhere in `src/` (grep: only the declaration) and never passed to the client; polling cadence is hardcoded in the client's `RobotManager` (1 s / 5 s) | `package.json:133` |
 | 20 | `abbRobot.robots` settings schema omits `port`/`useHttps`, but the add-robot wizard and the VC port-recovery path persist both into that setting | `package.json:81-115` vs `extension.ts:85-93,653-660` |
 

@@ -1,7 +1,7 @@
 {
   "name": "abb-rws",
   "displayName": "RAPID Live — ABB Robotics for VS Code",
-  "version": "0.10.0",
+  "version": "1.0.0",
   "description": "The only VS Code extension that connects to live ABB IRC5 (RobotWare 6) and OmniCore (RobotWare 7) controllers. Live-tested on RW7.21 + RW6.16. RAPID language server (hover docs, autocomplete, signature help, go-to-definition, inlay hints with live values, CodeLens), git-style push/pull/diff workflow for .mod files, multi-robot management, real-time WebSocket subscriptions, IK + FK, file/IO/event-log access, variable watch panel, dual RWS 1.0 + 2.0 protocol support.",
   "publisher": "merajsafari",
   "author": {
@@ -82,7 +82,7 @@
         "abbRobot.robots": {
           "type": "array",
           "default": [],
-          "description": "List of saved robot controllers. Each entry: { id, name, host, port?, useHttps?, username, password }.",
+          "description": "List of saved robot controllers. Each entry: { id, name, host, port?, useHttps?, username }. Passwords are kept in VS Code secure storage (SecretStorage), not in this setting.",
           "items": {
             "type": "object",
             "properties": {
@@ -111,15 +111,14 @@
               },
               "password": {
                 "type": "string",
-                "default": "robotics"
+                "description": "Deprecated here — passwords are stored in VS Code secure storage. Any password found in this setting is migrated to secure storage on activation and removed from settings. The field remains only for backward compatibility."
               }
             },
             "required": [
               "id",
               "name",
               "host",
-              "username",
-              "password"
+              "username"
             ]
           }
         },
@@ -179,6 +178,12 @@
         "title": "Add Robot…",
         "category": "ABB Robot",
         "icon": "$(add)"
+      },
+      {
+        "command": "abbRobot.discoverControllers",
+        "title": "Discover Controllers (mDNS)",
+        "category": "ABB Robot",
+        "icon": "$(broadcast)"
       },
       {
         "command": "abbRobot.showLogs",
@@ -531,6 +536,42 @@
         "title": "Set Speed Ratio…",
         "category": "ABB Robot",
         "icon": "$(dashboard)"
+      },
+      {
+        "command": "abbRobot.simEStop",
+        "title": "Simulate E-Stop (virtual controller)",
+        "category": "ABB Robot",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "abbRobot.simResetEStop",
+        "title": "Reset Simulated E-Stop (virtual controller)",
+        "category": "ABB Robot",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "abbRobot.simGeneralStop",
+        "title": "Simulate General Stop Toggle (virtual controller)",
+        "category": "ABB Robot",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "abbRobot.simAutoStop",
+        "title": "Simulate Auto Stop Toggle (virtual controller)",
+        "category": "ABB Robot",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "abbRobot.simEnableSwitch",
+        "title": "Simulate Enable Switch (virtual controller)",
+        "category": "ABB Robot",
+        "icon": "$(record)"
+      },
+      {
+        "command": "abbRobot.teleportRobot",
+        "title": "Teleport Robot to Joints… (virtual controller)",
+        "category": "ABB Robot",
+        "icon": "$(rocket)"
       },
       {
         "command": "abbRobot.calcIK",
@@ -1176,7 +1217,7 @@
     "package": "npx vsce package"
   },
   "dependencies": {
-    "abb-rws-client": "file:vendor/abb-rws-client-0.8.0.tgz"
+    "abb-rws-client": "file:vendor/abb-rws-client-1.0.0.tgz"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",

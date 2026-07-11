@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { MultiRobotManager, RobotManager, setLogger } from 'abb-rws-client';
-import type { RobotConfig, DiscoveredController } from 'abb-rws-client';
+import type { RobotConfig, DiscoveredController, MdnsController } from 'abb-rws-client';
 import { StatusTreeProvider } from './StatusTreeProvider';
 import { MotionTreeProvider } from './MotionTreeProvider';
 import { RapidTreeProvider } from './RapidTreeProvider';
@@ -35,27 +35,81 @@ let globalMulti: MultiRobotManager | undefined;
 /** Set after the user confirms the first-jog safety dialog. Reset on each extension activation. */
 let jogConfirmed = false;
 
+// ─── Password secret storage ─────────────────────────────────────────────────
+
+/** SecretStorage key for a robot's password. */
+function passwordSecretKey(robotId: string): string {
+  return `abbRobot.password/${robotId}`;
+}
+
+/**
+ * Store a robot's password in SecretStorage. A failure is non-fatal — the
+ * password still lives in the in-memory config for this session — but the
+ * user is warned it won't survive a reload.
+ */
+async function storePasswordSecret(secrets: vscode.SecretStorage, robotId: string, password: string): Promise<void> {
+  try {
+    await secrets.store(passwordSecretKey(robotId), password);
+  } catch (e) {
+    Logger.warn(`could not write password to secure storage for ${robotId}: ${e instanceof Error ? e.message : String(e)}`);
+    vscode.window.showWarningMessage('Could not save the robot password to secure storage — you may need to re-enter it after the next reload.');
+  }
+}
+
 // ─── Add Robot Wizard ────────────────────────────────────────────────────────
 
 /**
- * Full "Add Robot" flow:
- *  1. Auto-scan standard ABB addresses (127.0.0.1, 192.168.125.1)
- *  2. Present found controllers + "Enter IP manually" + "How to connect?" options
- *  3. If user enters a custom IP, scan that too and show results
- *  4. Collect credentials and name, save to config
+ * mDNS discovery with a safety net: returns [] when discovery fails for any
+ * reason (multicast blocked, no announcements, socket errors), so callers can
+ * always fall back to port scanning / manual entry.
  */
-async function runAddRobotWizard(multi: MultiRobotManager): Promise<void> {
-  // Phase 1 — auto-scan standard hosts
-  const discovered = await vscode.window.withProgress(
+async function discoverControllersMdnsSafe(timeoutMs: number): Promise<MdnsController[]> {
+  try {
+    return await RobotManager.discoverControllersMdns({ timeoutMs });
+  } catch (e) {
+    Logger.warn(`mDNS discovery failed: ${e instanceof Error ? e.message : String(e)}`);
+    return [];
+  }
+}
+
+/** A picked discovery result — probe fields plus an optional name suggestion (mDNS announces the system name). */
+type SelectedController = DiscoveredController & { suggestedName?: string };
+
+/**
+ * Full "Add Robot" flow:
+ *  1. Auto-scan standard ABB addresses (127.0.0.1, 192.168.125.1) + mDNS discovery
+ *  2. Present found controllers + "Enter address manually" + "How to connect?" options
+ *  3. If user enters a custom IP, scan that too and show results
+ *  4. Collect credentials and name, save to config (password → SecretStorage)
+ */
+async function runAddRobotWizard(multi: MultiRobotManager, secrets: vscode.SecretStorage): Promise<void> {
+  // Phase 1 — auto-scan standard hosts and listen for mDNS announcements in parallel
+  const [scanned, mdnsFound] = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: 'Scanning for ABB controllers…', cancellable: false },
-    () => RobotManager.discoverControllers(),
+    () => Promise.all([
+      RobotManager.discoverControllers(),
+      discoverControllersMdnsSafe(2500),
+    ]),
   );
 
   // Phase 2 — show picker
-  const selected = await showDiscoveryPicker(discovered, 'Detected ABB controllers');
+  const selected = await showDiscoveryPicker(scanned, mdnsFound, 'Detected ABB controllers');
   if (!selected) { return; }
 
-  // Phase 3 — credentials
+  // Phases 3+4 — credentials, display name, save
+  await finishAddRobot(multi, secrets, selected);
+}
+
+/**
+ * Final phases of the add-robot flow: collect credentials and display name,
+ * persist the config (password goes to SecretStorage, never to settings),
+ * then offer to connect.
+ */
+async function finishAddRobot(
+  multi: MultiRobotManager,
+  secrets: vscode.SecretStorage,
+  selected: SelectedController,
+): Promise<void> {
   const username = await vscode.window.showInputBox({
     title: 'Add Robot — Credentials (1/2)',
     prompt: 'RWS username',
@@ -72,8 +126,7 @@ async function runAddRobotWizard(multi: MultiRobotManager): Promise<void> {
   });
   if (password === undefined) { return; }
 
-  // Phase 4 — display name
-  const defaultName = buildDefaultName(selected);
+  const defaultName = selected.suggestedName ?? buildDefaultName(selected);
   const name = await vscode.window.showInputBox({
     title: 'Add Robot — Display Name',
     prompt: 'Name shown in the Robots panel',
@@ -91,6 +144,7 @@ async function runAddRobotWizard(multi: MultiRobotManager): Promise<void> {
     username: username.trim(),
     password,
   };
+  await storePasswordSecret(secrets, config.id, password);
   multi.addRobot(config);
   await saveConfigs(multi.configs);
 
@@ -103,21 +157,79 @@ async function runAddRobotWizard(multi: MultiRobotManager): Promise<void> {
   }
 }
 
+/** Human label for an mDNS-discovered controller, e.g. "MySystem — 192.168.125.1:443 (RWS 2.0)". */
+function mdnsPickLabel(c: MdnsController): string {
+  const proto = c.probableProtocol === 'rws2' ? '2.0' : c.probableProtocol === 'rws1' ? '1.0' : '?';
+  return `${c.systemName} — ${c.host}:${c.port} (RWS ${proto})`;
+}
+
+/**
+ * Map an mDNS hit onto connection parameters. rws2 → HTTPS/Basic, rws1 →
+ * HTTP/Digest. If the announcement didn't say, probe the exact port; if even
+ * that fails, let the user add with assumed defaults.
+ */
+async function resolveMdnsPick(c: MdnsController): Promise<SelectedController | undefined> {
+  if (c.probableProtocol === 'rws2') {
+    return { host: c.host, port: c.port, useHttps: true, authType: 'basic', suggestedName: c.systemName };
+  }
+  if (c.probableProtocol === 'rws1') {
+    return { host: c.host, port: c.port, useHttps: false, authType: 'digest', suggestedName: c.systemName };
+  }
+  const probed = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: `Probing ${c.host}:${c.port}…`, cancellable: false },
+    () => RobotManager.probeSpecificPort(c.host, c.port),
+  );
+  if (probed) {
+    return { host: c.host, port: c.port, useHttps: probed.useHttps, authType: probed.authType, suggestedName: c.systemName };
+  }
+  const fallback = await vscode.window.showWarningMessage(
+    `"${c.systemName}" announced ${c.host}:${c.port} via mDNS but did not answer an RWS probe.\nAdd anyway with assumed defaults?`,
+    'Add as RWS 1.0 (HTTP/Digest)', 'Add as RWS 2.0 (HTTPS/Basic)', 'Cancel',
+  );
+  if (fallback === 'Add as RWS 1.0 (HTTP/Digest)') {
+    return { host: c.host, port: c.port, useHttps: false, authType: 'digest', suggestedName: c.systemName };
+  }
+  if (fallback === 'Add as RWS 2.0 (HTTPS/Basic)') {
+    return { host: c.host, port: c.port, useHttps: true, authType: 'basic', suggestedName: c.systemName };
+  }
+  return undefined;
+}
+
 type DiscoveredItem = { label: string; description: string; detail?: string; probe: DiscoveredController };
 
 /**
- * Show a QuickPick of discovered controllers.
- * Always includes "Enter IP manually" and "How to connect?" at the bottom.
- * If user picks "Enter IP manually", scans that host and re-shows the picker.
+ * Show a QuickPick of discovered controllers (mDNS announcements first, then
+ * port-scan hits). Always includes "Enter address manually" and "How to
+ * connect?" at the bottom. If user picks manual entry, scans that host and
+ * re-shows the picker.
  */
 async function showDiscoveryPicker(
   found: DiscoveredController[],
+  mdnsFound: MdnsController[],
   title: string,
-): Promise<DiscoveredController | undefined> {
+): Promise<SelectedController | undefined> {
 
-  type Item = vscode.QuickPickItem & { kind?: vscode.QuickPickItemKind; probe?: DiscoveredController; action?: 'manual' | 'help' };
+  type Item = vscode.QuickPickItem & {
+    kind?: vscode.QuickPickItemKind;
+    probe?: DiscoveredController;
+    mdns?: MdnsController;
+    action?: 'manual' | 'help';
+  };
 
-  const controllerItems: Item[] = found.map(p => ({
+  // mDNS announcements carry the system name — richer than a bare port probe.
+  // When both discovery paths find the same host:port, keep the mDNS entry.
+  const mdnsKeys = new Set(mdnsFound.map(c => `${c.host}:${c.port}`));
+  const scanOnly = found.filter(p => !mdnsKeys.has(`${p.host}:${p.port}`));
+  const totalFound = mdnsFound.length + scanOnly.length;
+
+  const mdnsItems: Item[] = mdnsFound.map(c => ({
+    label:       mdnsPickLabel(c),
+    description: c.rwVersion ? `RobotWare ${c.rwVersion}` : undefined,
+    detail:      `Announced via mDNS — instance "${c.instanceName}"`,
+    mdns: c,
+  }));
+
+  const controllerItems: Item[] = scanOnly.map(p => ({
     label:       `$(circuit-board)  ${p.host}:${p.port}`,
     description: p.authType === 'basic'
       ? 'RWS 2.0 · OmniCore · RobotWare 7 · HTTPS'
@@ -131,7 +243,7 @@ async function showDiscoveryPicker(
   };
 
   const manualItem: Item = {
-    label:       '$(add)  Enter IP address manually…',
+    label:       '$(add)  Enter address manually…',
     description: 'Specify a host that is not on the auto-scan list',
     action: 'manual',
   };
@@ -142,29 +254,30 @@ async function showDiscoveryPicker(
     action: 'help',
   };
 
-  const noneLabel: Item | undefined = found.length === 0 ? {
+  const noneLabel: Item | undefined = totalFound === 0 ? {
     label:       '$(warning)  No controllers found automatically',
-    description: 'Check network/RWS settings or enter IP manually',
+    description: 'Check network/RWS settings or enter address manually',
     kind: vscode.QuickPickItemKind.Separator,
   } : undefined;
 
   const items: Item[] = [
     ...(noneLabel ? [noneLabel] : []),
+    ...mdnsItems,
     ...controllerItems,
     separator,
     manualItem,
     helpItem,
   ];
 
-  const titleSuffix = found.length > 0
-    ? ` — ${found.length} found`
+  const titleSuffix = totalFound > 0
+    ? ` — ${totalFound} found`
     : ' — none found on standard addresses';
 
   const pick = await vscode.window.showQuickPick(items, {
     title: title + titleSuffix,
-    placeHolder: found.length > 0
-      ? 'Select a controller to add, or enter an IP manually'
-      : 'No controllers found — enter IP or see connection guide',
+    placeHolder: totalFound > 0
+      ? 'Select a controller to add, or enter an address manually'
+      : 'No controllers found — enter address or see connection guide',
     matchOnDescription: true,
   });
 
@@ -173,6 +286,10 @@ async function showDiscoveryPicker(
   if (pick.action === 'help') {
     showConnectionGuide();
     return undefined;
+  }
+
+  if (pick.mdns) {
+    return resolveMdnsPick(pick.mdns);
   }
 
   if (pick.action === 'manual') {
@@ -243,7 +360,7 @@ async function showDiscoveryPicker(
     }
 
     // Re-show picker with the manually-scanned results
-    return showDiscoveryPicker(withHost, `Controllers at ${manualHost}`);
+    return showDiscoveryPicker(withHost, [], `Controllers at ${manualHost}`);
   }
 
   return pick.probe;
@@ -306,13 +423,27 @@ If your controller uses a different port, use "Enter IP manually" and type \`ip:
 
 // ─── Settings helpers ────────────────────────────────────────────────────────
 
-function loadConfigs(cfg: vscode.WorkspaceConfiguration): RobotConfig[] {
-  const saved = cfg.get<RobotConfig[]>('robots', []);
-  if (saved.length > 0) { return saved; }
-  // Backward-compatibility: migrate old single-robot settings
-  const host = cfg.get<string>('host', '');
-  if (host) {
-    return [{
+/** A settings entry for a robot — like RobotConfig but the password field is optional (scrubbed after secret migration). */
+type SavedRobotEntry = Omit<RobotConfig, 'password'> & { password?: string };
+
+/**
+ * Build RobotConfigs from settings + SecretStorage. Passwords come from
+ * SecretStorage first ('abbRobot.password/<robotId>'); a plaintext password
+ * still sitting in the setting is only a fallback (pre-migration installs, or
+ * settings synced from a machine whose secrets don't travel with Settings
+ * Sync). If SecretStorage is unavailable, the settings value is used as-is —
+ * activation must never crash over a locked keychain.
+ */
+async function loadConfigs(cfg: vscode.WorkspaceConfiguration, secrets: vscode.SecretStorage): Promise<RobotConfig[]> {
+  const saved = cfg.get<SavedRobotEntry[]>('robots', []);
+  let entries: SavedRobotEntry[];
+  if (saved.length > 0) {
+    entries = saved;
+  } else {
+    // Backward-compatibility: migrate old single-robot settings
+    const host = cfg.get<string>('host', '');
+    if (!host) { return []; }
+    entries = [{
       id: 'default',
       name: host,
       host,
@@ -320,12 +451,63 @@ function loadConfigs(cfg: vscode.WorkspaceConfiguration): RobotConfig[] {
       password: cfg.get<string>('password', 'robotics'),
     }];
   }
-  return [];
+  const configs: RobotConfig[] = [];
+  for (const entry of entries) {
+    let password = typeof entry.password === 'string' ? entry.password : '';
+    try {
+      const secret = await secrets.get(passwordSecretKey(entry.id));
+      if (secret !== undefined) { password = secret; }
+    } catch (e) {
+      Logger.warn(`secure storage unavailable while loading "${entry.name}" — using settings password: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    configs.push({ ...entry, password });
+  }
+  return configs;
+}
+
+/**
+ * One-time move of plaintext passwords out of the `abbRobot.robots` setting
+ * (which Settings Sync uploads) into SecretStorage. The password property
+ * stays in the settings schema for backward compat, but any value found there
+ * is stored as a secret and removed from settings. Runs on every activation
+ * and is a no-op once settings are clean. Returns how many passwords moved.
+ */
+async function migratePasswordsToSecrets(secrets: vscode.SecretStorage): Promise<number> {
+  const cfg = vscode.workspace.getConfiguration('abbRobot');
+  const inspected = cfg.inspect<SavedRobotEntry[]>('robots');
+  // The extension itself only writes the Global target, but users can
+  // hand-edit workspace settings — scrub whichever targets hold passwords.
+  const targets: Array<{ value: SavedRobotEntry[] | undefined; target: vscode.ConfigurationTarget }> = [
+    { value: inspected?.globalValue,    target: vscode.ConfigurationTarget.Global },
+    { value: inspected?.workspaceValue, target: vscode.ConfigurationTarget.Workspace },
+  ];
+  let migrated = 0;
+  for (const { value, target } of targets) {
+    if (!Array.isArray(value)) { continue; }
+    const withPassword = value.filter(c => c && typeof c.id === 'string' && typeof c.password === 'string');
+    if (withPassword.length === 0) { continue; }
+    // Store every secret FIRST; only scrub the setting once all writes
+    // succeeded, so a SecretStorage failure never loses a password.
+    for (const c of withPassword) {
+      await secrets.store(passwordSecretKey(c.id), c.password!);
+    }
+    const scrubbed = value.map(c => {
+      if (!c || typeof c.id !== 'string' || typeof c.password !== 'string') { return c; }
+      const { password: _password, ...rest } = c;
+      return rest;
+    });
+    await cfg.update('robots', scrubbed, target);
+    migrated += withPassword.length;
+  }
+  return migrated;
 }
 
 async function saveConfigs(configs: RobotConfig[]): Promise<void> {
+  // Passwords never go into settings (Settings Sync would upload them in
+  // plaintext) — they live in SecretStorage, keyed by robot id.
+  const scrubbed = configs.map(({ password: _password, ...rest }) => rest);
   const cfg = vscode.workspace.getConfiguration('abbRobot');
-  await cfg.update('robots', configs, vscode.ConfigurationTarget.Global);
+  await cfg.update('robots', scrubbed, vscode.ConfigurationTarget.Global);
 }
 
 // ─── Active manager helper ────────────────────────────────────────────────────
@@ -347,7 +529,7 @@ function extractRobotId(arg?: unknown): string | undefined {
 
 // ─── Activate ────────────────────────────────────────────────────────────────
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // Install our VS Code-backed logger into abb-rws-client (RobotManager,
   // RwsClient, RwsClient2 — including HTTP req/res tracing — all use this).
   setLogger({
@@ -359,12 +541,26 @@ export function activate(context: vscode.ExtensionContext) {
   });
   Logger.info(`extension activated — log file: ${Logger.getLogFilePath()}`);
 
+  // Move any plaintext passwords out of settings into SecretStorage before
+  // loading configs. Failure is non-fatal — passwords stay in settings and
+  // the migration retries on next activation.
+  try {
+    const migrated = await migratePasswordsToSecrets(context.secrets);
+    if (migrated > 0) {
+      vscode.window.showInformationMessage(
+        `ABB Robot: moved ${migrated} robot password${migrated === 1 ? '' : 's'} from settings into VS Code secure storage. The abbRobot.robots setting no longer contains plaintext passwords.`,
+      );
+    }
+  } catch (e) {
+    Logger.warn(`password migration to secure storage failed — passwords stay in settings for now: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   const cfg   = vscode.workspace.getConfiguration('abbRobot');
   // Schema minimum is 200 but settings.json edits bypass UI validation — clamp here too.
   const refreshIntervalMs = Math.max(200, cfg.get<number>('refreshInterval', 1000));
   // TLS verification stays off unless opted in — controllers ship self-signed certs.
   const strictTls = cfg.get<boolean>('strictTls', false);
-  const multi = MultiRobotManager.fromConfigs(loadConfigs(cfg), { refreshIntervalMs, strictTls });
+  const multi = MultiRobotManager.fromConfigs(await loadConfigs(cfg, context.secrets), { refreshIntervalMs, strictTls });
   globalMulti = multi;
 
   // Route RobotManager errors (3 failed polls → auto-disconnect) through VS Code dialogs.
@@ -617,7 +813,35 @@ export function activate(context: vscode.ExtensionContext) {
     }),
 
     tracedCommand('abbRobot.addRobot', async () => {
-      await runAddRobotWizard(multi);
+      await runAddRobotWizard(multi, context.secrets);
+    }),
+
+    tracedCommand('abbRobot.discoverControllers', async () => {
+      const mdnsFound = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Discovering ABB controllers (mDNS)…', cancellable: false },
+        () => discoverControllersMdnsSafe(2500),
+      );
+      if (mdnsFound.length === 0) {
+        const choice = await vscode.window.showInformationMessage(
+          'No controllers announced themselves via mDNS. Controllers on other subnets do not receive multicast — use the Add Robot wizard to scan or enter an address.',
+          'Add Robot…',
+        );
+        if (choice === 'Add Robot…') { vscode.commands.executeCommand('abbRobot.addRobot'); }
+        return;
+      }
+      const pick = await vscode.window.showQuickPick(
+        mdnsFound.map(c => ({
+          label:       mdnsPickLabel(c),
+          description: c.rwVersion ? `RobotWare ${c.rwVersion}` : undefined,
+          detail:      `Announced via mDNS — instance "${c.instanceName}"`,
+          mdns:        c,
+        })),
+        { title: `Discovered controllers — ${mdnsFound.length} found`, placeHolder: 'Select a controller to add', matchOnDescription: true },
+      );
+      if (!pick) { return; }
+      const selected = await resolveMdnsPick(pick.mdns);
+      if (!selected) { return; }
+      await finishAddRobot(multi, context.secrets, selected);
     }),
 
     tracedCommand('abbRobot.removeRobot', async (arg?: unknown) => {
@@ -629,6 +853,8 @@ export function activate(context: vscode.ExtensionContext) {
       );
       if (confirm !== 'Remove') { return; }
       multi.removeRobot(id);
+      try { await context.secrets.delete(passwordSecretKey(id)); }
+      catch (e) { Logger.warn(`could not delete password secret for ${id}: ${e instanceof Error ? e.message : String(e)}`); }
       await saveConfigs(multi.configs);
     }),
 
@@ -718,6 +944,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (password === undefined) { return; }
 
       multi.updateConfig(id, { host: host.trim(), username: username.trim(), password });
+      await storePasswordSecret(context.secrets, id, password);
       await saveConfigs(multi.configs);
 
       const connect = await vscode.window.showInformationMessage(`✓ Saved — host: ${host.trim()}`, 'Reconnect');
@@ -784,6 +1011,57 @@ export function activate(context: vscode.ExtensionContext) {
       if (input === undefined) { return; }
       try { await mgr(multi).setSpeedRatio(+input); vscode.window.showInformationMessage(`Speed ratio: ${input}%`); }
       catch (e: unknown) { showError('Set speed ratio', e, multi); }
+    }),
+
+    // ─── Simulation panel (virtual controllers only) ─────────────────────────
+
+    tracedCommand('abbRobot.simEStop', async () => {
+      try { await mgr(multi).simEmergencyStop(); vscode.window.showWarningMessage('Simulated E-Stop engaged. Use "Reset Simulated E-Stop" to release.'); }
+      catch (e: unknown) { showError('Simulate E-Stop', e, multi); }
+    }),
+
+    tracedCommand('abbRobot.simResetEStop', async () => {
+      try { await mgr(multi).simResetEmergencyStop(); vscode.window.showInformationMessage('Simulated E-Stop released.'); }
+      catch (e: unknown) { showError('Reset simulated E-Stop', e, multi); }
+    }),
+
+    tracedCommand('abbRobot.simGeneralStop', async () => {
+      const engaged = multi.state.ctrlstate === 'guardstop';
+      try { await mgr(multi).simGeneralStop(!engaged); vscode.window.showInformationMessage(`Simulated general stop ${engaged ? 'released' : 'engaged'}.`); }
+      catch (e: unknown) { showError('Simulate general stop', e, multi); }
+    }),
+
+    tracedCommand('abbRobot.simAutoStop', async () => {
+      const engaged = multi.state.ctrlstate === 'guardstop';
+      try { await mgr(multi).simAutoStop(!engaged); vscode.window.showInformationMessage(`Simulated auto stop ${engaged ? 'released' : 'engaged'}.`); }
+      catch (e: unknown) { showError('Simulate auto stop', e, multi); }
+    }),
+
+    tracedCommand('abbRobot.simEnableSwitch', async () => {
+      const pick = await vscode.window.showQuickPick(['Press (on)', 'Release (off)'], { title: 'Simulate Enable Switch' });
+      if (pick === undefined) { return; }
+      try { await mgr(multi).simEnableSwitch(pick.startsWith('Press')); vscode.window.showInformationMessage(`Simulated enable switch ${pick.startsWith('Press') ? 'pressed' : 'released'}.`); }
+      catch (e: unknown) { showError('Simulate enable switch', e, multi); }
+    }),
+
+    tracedCommand('abbRobot.teleportRobot', async () => {
+      const mechunit = multi.state.mechunits[0] ?? 'ROB_1';
+      const current = multi.state.joints;
+      const seed = current ? [current.rax_1, current.rax_2, current.rax_3, current.rax_4, current.rax_5, current.rax_6].join(', ') : '0, 0, 0, 0, 0, 0';
+      const input = await vscode.window.showInputBox({
+        title: `Teleport ${mechunit} to joints (degrees)`,
+        prompt: 'Six comma-separated joint angles',
+        value: seed,
+        validateInput: v => {
+          const parts = v.split(',').map(s => s.trim());
+          if (parts.length !== 6 || parts.some(p => isNaN(+p))) { return 'Enter six numbers separated by commas'; }
+          return undefined;
+        },
+      });
+      if (input === undefined) { return; }
+      const joints = input.split(',').map(s => +s.trim());
+      try { await mgr(multi).teleportMechunit(mechunit, joints); vscode.window.showInformationMessage(`Teleported ${mechunit} to [${joints.join(', ')}].`); }
+      catch (e: unknown) { showError('Teleport robot', e, multi); }
     }),
 
     // ─── Jogging ─────────────────────────────────────────────────────────────

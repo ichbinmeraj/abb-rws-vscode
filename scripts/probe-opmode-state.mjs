@@ -2,43 +2,11 @@
 // 500 = "controller received it, validated wire format, but couldn't perform"
 // Common causes: opmode locked, another client holds priority, pending dialog.
 
-const https = require('https');
-const httpsAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
+// Env: RWS2_URL RWS_USER RWS_PASS (see scripts/lib/probe-common.mjs)
+import { RWS2_URL, makeSession, sleep } from './lib/probe-common.mjs';
 
-let cookie = null;
-function req(method, path, body, user = 'Default User') {
-  return new Promise(resolve => {
-    const headers = {
-      Authorization: 'Basic ' + Buffer.from(user + ':robotics').toString('base64'),
-      Accept: 'application/xhtml+xml;v=2.0',
-    };
-    if (cookie) { headers.Cookie = cookie; }
-    if (body !== undefined) {
-      headers['Content-Type'] = 'application/x-www-form-urlencoded;v=2.0';
-      headers['Content-Length'] = Buffer.byteLength(body);
-    }
-    const r = https.request({
-      host: '127.0.0.1', port: 5466, path, method, headers,
-      agent: httpsAgent, rejectUnauthorized: false,
-    }, res => {
-      let d = '';
-      res.on('data', c => { d += c; });
-      res.on('end', () => {
-        const sc = res.headers['set-cookie'];
-        if (sc) {
-          const ct = sc.find(c => /^(-http-session-|ABBCX|http-session)=/.test(c));
-          if (ct) { cookie = ct.split(';')[0]; }
-        }
-        resolve({ status: res.statusCode, body: d });
-      });
-    });
-    r.on('error', e => resolve({ status: 0, error: e.message }));
-    if (body !== undefined) { r.write(body); }
-    r.end();
-  });
-}
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const session = makeSession(RWS2_URL);
+const req = session.req;
 
 (async () => {
   // 1. Read the FULL opmode resource — includes lock/pending state
@@ -104,5 +72,5 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   console.log('  body:', r7.body.slice(0, 300));
   await req('POST', '/rw/mastership/edit/release');
 
-  await req('GET', '/logout');
+  await session.logout();
 })();
