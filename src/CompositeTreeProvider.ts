@@ -9,7 +9,7 @@ import * as vscode from 'vscode';
  * single domain-grouped panels (Program / Controller Data / Diagnostics).
  *
  * Why this design:
- *   - Zero changes to the existing providers — they still expose their full
+ *   - Zero changes to the existing providers - they still expose their full
  *     tree. The composite only adds a "section header" wrapper.
  *   - Each underlying provider's `refresh()` continues to be callable from
  *     the extension; the composite subscribes to each child's
@@ -25,7 +25,7 @@ import * as vscode from 'vscode';
  */
 
 export interface CompositeSection {
-  /** Stable identifier — used by tests/log lines and as the TreeItem id. */
+  /** Stable identifier - used by tests/log lines and as the TreeItem id. */
   id: string;
   /** Label shown to the user. Convention: "── Name ──". */
   label: string;
@@ -65,7 +65,7 @@ export class CompositeTreeProvider implements vscode.TreeDataProvider<vscode.Tre
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
     // Section headers have already been built with the correct shape by
     // `buildSectionHeader`. Items returned by underlying providers are
-    // already TreeItems — VS Code calls getTreeItem on them too in some
+    // already TreeItems - VS Code calls getTreeItem on them too in some
     // flows, but since they ARE TreeItems we just return as-is.
     if ((element as { _isSectionHeader?: boolean })._isSectionHeader) {
       return element;
@@ -81,7 +81,7 @@ export class CompositeTreeProvider implements vscode.TreeDataProvider<vscode.Tre
 
   async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
     if (!element) {
-      // Root — emit one section header per section.
+      // Root - emit one section header per section.
       return this.sections.map(s => this.buildSectionHeader(s));
     }
 
@@ -95,7 +95,7 @@ export class CompositeTreeProvider implements vscode.TreeDataProvider<vscode.Tre
       return items;
     }
 
-    // Delegated descendant — find the providing provider, ask for its children.
+    // Delegated descendant - find the providing provider, ask for its children.
     const provider = this.itemProvider.get(element);
     if (!provider) { return []; }
     const children = (await provider.getChildren?.(element)) ?? [];
@@ -126,7 +126,7 @@ export class CompositeTreeProvider implements vscode.TreeDataProvider<vscode.Tre
     if (provider.getTreeItem) {
       return await provider.getTreeItem(child);
     }
-    // Fallback — should not happen in our codebase since every provider
+    // Fallback - should not happen in our codebase since every provider
     // either returns TreeItems directly or implements getTreeItem.
     return new vscode.TreeItem('?');
   }

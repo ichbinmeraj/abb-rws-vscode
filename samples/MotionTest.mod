@@ -1,6 +1,6 @@
 MODULE MotionTest
     !========================================================================
-    ! MotionTest.mod — Motion demo for the RAPID Live extension.
+    ! MotionTest.mod - Motion demo for the RAPID Live extension.
     !
     ! Demonstrates that the extension can move the robot. Each procedure runs
     ! a different motion pattern that's visible in RobotStudio's 3D view.
@@ -10,7 +10,7 @@ MODULE MotionTest
     !   2. Motors On (Status panel)
     !   3. PP to Main → Start RAPID  (runs main, which sweeps a few poses)
     !   OR set PP to a specific routine via the right-click menu in the
-    !   Modules panel — testSquare, testWave, testPickPlace.
+    !   Modules panel - testSquare, testWave, testPickPlace.
     !
     ! Compatible with both IRC5 (RobotWare 6) and OmniCore (RobotWare 7).
     ! Uses tool0 + wobj0 so you don't need to configure tooling.
@@ -23,7 +23,7 @@ MODULE MotionTest
     CONST string moduleVersion := "1.0";
 
     ! ─── Targets ────────────────────────────────────────────────────────────
-    ! Reachable poses for IRB120 / IRB1200 — small workspace.
+    ! Reachable poses for IRB120 / IRB1200 - small workspace.
     ! Adjust if your robot has a different reach.
 
     CONST robtarget pHome   := [[400,   0, 600], [0, 0, 1, 0], [0, 0, 0, 0], [9E9, 9E9, 9E9, 9E9, 9E9, 9E9]];
@@ -36,17 +36,17 @@ MODULE MotionTest
     CONST robtarget pPick   := [[450, 200, 400], [0, 0, 1, 0], [0, 0, 0, 0], [9E9, 9E9, 9E9, 9E9, 9E9, 9E9]];
     CONST robtarget pPlace  := [[450,-200, 400], [0, 0, 1, 0], [0, 0, 0, 0], [9E9, 9E9, 9E9, 9E9, 9E9, 9E9]];
 
-    ! ─── main: continuous demo loop — robot keeps moving until you click Stop ──
+    ! ─── main: continuous demo loop - robot keeps moving until you click Stop ──
     !
     ! Each iteration takes ~10 s so motion is clearly visible in the 3D view.
     ! The previous version ran ONCE then stopped (and at fine/v500 it was over
-    ! in 3 s — easy to miss). This version loops with deliberate pacing.
+    ! in 3 s - easy to miss). This version loops with deliberate pacing.
     !
     ! Want a single-pass run? Right-click the module → Set PP to Routine →
     ! pick `mainSinglePass`, then Start.
     PROC main()
         TPErase;
-        TPWrite "MotionTest v" + moduleVersion + " — continuous demo. Click Stop to exit.";
+        TPWrite "MotionTest v" + moduleVersion + " - continuous demo. Click Stop to exit.";
         WHILE TRUE DO
             cycleCount := cycleCount + 1;
             persistentRuns := persistentRuns + 1;
@@ -66,7 +66,7 @@ MODULE MotionTest
         ENDWHILE
     ENDPROC
 
-    ! Single-pass version of the square — runs once, then Stop. Use this
+    ! Single-pass version of the square - runs once, then Stop. Use this
     ! when you want a quick verification rather than an endless demo.
     PROC mainSinglePass()
         TPErase;
@@ -81,7 +81,7 @@ MODULE MotionTest
         MoveL pCorner1, v100, fine, tool0\WObj:=wobj0;
         MoveJ pHome,    v200, fine, tool0\WObj:=wobj0;
         counter := counter + 7;
-        TPWrite "single-pass done — total runs " + ValToStr(persistentRuns);
+        TPWrite "single-pass done - total runs " + ValToStr(persistentRuns);
         Stop;
     ENDPROC
 
@@ -120,7 +120,7 @@ MODULE MotionTest
             pAbove.trans.z := pAbove.trans.z + 100;
             MoveJ pAbove, v500, z10, tool0\WObj:=wobj0;
             MoveL pPick,  v200, fine, tool0\WObj:=wobj0;
-            ! "grip" — would set a DO here in a real cell
+            ! "grip" - would set a DO here in a real cell
             WaitTime 0.3;
             MoveL pAbove, v200, z10, tool0\WObj:=wobj0;
 

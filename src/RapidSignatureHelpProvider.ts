@@ -6,13 +6,13 @@ import { Logger } from './Logger';
 /**
  * Signature help provider for RAPID source files.
  *
- * When the user is in the middle of typing a call — e.g. `MoveJ │` after the
- * space, or `Cos(│)` after the open paren, or `MoveJ p1, │` after a comma —
+ * When the user is in the middle of typing a call - e.g. `MoveJ │` after the
+ * space, or `Cos(│)` after the open paren, or `MoveJ p1, │` after a comma -
  * we show a popup listing the parameters with their types, with the current
  * argument highlighted.
  *
- * Trigger characters: `(`, `,`, ` ` (space). RAPID has two call shapes —
- * function calls use `(args)`, instructions use space-separated args — so
+ * Trigger characters: `(`, `,`, ` ` (space). RAPID has two call shapes -
+ * function calls use `(args)`, instructions use space-separated args - so
  * we accept both.
  *
  * Backed by the same JSON DB as the hover and completion providers (705
@@ -24,7 +24,7 @@ interface Parameter {
   type: string;
   optional?: boolean;
   switch?: boolean;
-  /** Alternative to the previous parameter (`Signal | PersBool`) — shares its call slot. */
+  /** Alternative to the previous parameter (`Signal | PersBool`) - shares its call slot. */
   alt?: boolean;
 }
 
@@ -82,7 +82,7 @@ export class RapidSignatureHelpProvider implements vscode.SignatureHelpProvider 
    * Map the typed argument text onto the parameter list (which is in call
    * order, optional args interleaved with the required ones).
    *
-   * Optional args don't consume a positional slot — they attach with `\Name`
+   * Optional args don't consume a positional slot - they attach with `\Name`
    * either inside a slot (`v1000\V:=200`) or as their own slot (`\Conc,`).
    * So: if the cursor sits in a `\Name` group, highlight that optional by
    * name; otherwise count the preceding *positional* slots and highlight the
@@ -122,7 +122,7 @@ export class RapidSignatureHelpProvider implements vscode.SignatureHelpProvider 
     for (let i = 0; i < slots.length - 1; i++) {
       if (!/^\s*\\/.test(slots[i])) { pos++; }
     }
-    // Required alternatives (`Signal | PersBool`) share one call slot — only
+    // Required alternatives (`Signal | PersBool`) share one call slot - only
     // the first of a group advances the slot counter.
     let group = -1;
     for (let i = 0; i < params.length; i++) {
@@ -156,7 +156,7 @@ export class RapidSignatureHelpProvider implements vscode.SignatureHelpProvider 
       if (ch === ')') { depth++; }
       else if (ch === '(') {
         if (depth === 0) {
-          // We found an unmatched `(` — the function call's opening paren.
+          // We found an unmatched `(` - the function call's opening paren.
           // The token before it is the function name.
           const before = prefix.slice(0, i).trimEnd();
           const m = before.match(/([A-Za-z_]\w*)\s*$/);
@@ -197,7 +197,7 @@ export class RapidSignatureHelpProvider implements vscode.SignatureHelpProvider 
     sig.parameters = params.map(p => {
       const label = p.optional ? `[${p.name}]` : p.name;
       const info  = new vscode.ParameterInformation(label);
-      const tDoc  = p.switch ? '(switch — no value)' : `\`${p.type}\``;
+      const tDoc  = p.switch ? '(switch - no value)' : `\`${p.type}\``;
       info.documentation = new vscode.MarkdownString(`**${p.name}** : ${tDoc}${p.optional ? ' _(optional)_' : ''}`);
       return info;
     });

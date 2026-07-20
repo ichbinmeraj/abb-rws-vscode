@@ -43,8 +43,8 @@ function passwordSecretKey(robotId: string): string {
 }
 
 /**
- * Store a robot's password in SecretStorage. A failure is non-fatal — the
- * password still lives in the in-memory config for this session — but the
+ * Store a robot's password in SecretStorage. A failure is non-fatal - the
+ * password still lives in the in-memory config for this session - but the
  * user is warned it won't survive a reload.
  */
 async function storePasswordSecret(secrets: vscode.SecretStorage, robotId: string, password: string): Promise<void> {
@@ -52,7 +52,7 @@ async function storePasswordSecret(secrets: vscode.SecretStorage, robotId: strin
     await secrets.store(passwordSecretKey(robotId), password);
   } catch (e) {
     Logger.warn(`could not write password to secure storage for ${robotId}: ${e instanceof Error ? e.message : String(e)}`);
-    vscode.window.showWarningMessage('Could not save the robot password to secure storage — you may need to re-enter it after the next reload.');
+    vscode.window.showWarningMessage('Could not save the robot password to secure storage - you may need to re-enter it after the next reload.');
   }
 }
 
@@ -72,7 +72,7 @@ async function discoverControllersMdnsSafe(timeoutMs: number): Promise<MdnsContr
   }
 }
 
-/** A picked discovery result — probe fields plus an optional name suggestion (mDNS announces the system name). */
+/** A picked discovery result - probe fields plus an optional name suggestion (mDNS announces the system name). */
 type SelectedController = DiscoveredController & { suggestedName?: string };
 
 /**
@@ -83,7 +83,7 @@ type SelectedController = DiscoveredController & { suggestedName?: string };
  *  4. Collect credentials and name, save to config (password → SecretStorage)
  */
 async function runAddRobotWizard(multi: MultiRobotManager, secrets: vscode.SecretStorage): Promise<void> {
-  // Phase 1 — auto-scan standard hosts and listen for mDNS announcements in parallel
+  // Phase 1 - auto-scan standard hosts and listen for mDNS announcements in parallel
   const [scanned, mdnsFound] = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: 'Scanning for ABB controllers…', cancellable: false },
     () => Promise.all([
@@ -92,11 +92,11 @@ async function runAddRobotWizard(multi: MultiRobotManager, secrets: vscode.Secre
     ]),
   );
 
-  // Phase 2 — show picker
+  // Phase 2 - show picker
   const selected = await showDiscoveryPicker(scanned, mdnsFound, 'Detected ABB controllers');
   if (!selected) { return; }
 
-  // Phases 3+4 — credentials, display name, save
+  // Phases 3+4 - credentials, display name, save
   await finishAddRobot(multi, secrets, selected);
 }
 
@@ -111,7 +111,7 @@ async function finishAddRobot(
   selected: SelectedController,
 ): Promise<void> {
   const username = await vscode.window.showInputBox({
-    title: 'Add Robot — Credentials (1/2)',
+    title: 'Add Robot - Credentials (1/2)',
     prompt: 'RWS username',
     value: 'Admin',
     validateInput: v => v.trim() ? undefined : 'Required',
@@ -119,7 +119,7 @@ async function finishAddRobot(
   if (!username) { return; }
 
   const password = await vscode.window.showInputBox({
-    title: 'Add Robot — Credentials (2/2)',
+    title: 'Add Robot - Credentials (2/2)',
     prompt: 'RWS password',
     value: 'robotics',
     password: true,
@@ -128,7 +128,7 @@ async function finishAddRobot(
 
   const defaultName = selected.suggestedName ?? buildDefaultName(selected);
   const name = await vscode.window.showInputBox({
-    title: 'Add Robot — Display Name',
+    title: 'Add Robot - Display Name',
     prompt: 'Name shown in the Robots panel',
     value: defaultName,
     validateInput: v => v.trim() ? undefined : 'Required',
@@ -157,10 +157,10 @@ async function finishAddRobot(
   }
 }
 
-/** Human label for an mDNS-discovered controller, e.g. "MySystem — 192.168.125.1:443 (RWS 2.0)". */
+/** Human label for an mDNS-discovered controller, e.g. "MySystem - 192.168.125.1:443 (RWS 2.0)". */
 function mdnsPickLabel(c: MdnsController): string {
   const proto = c.probableProtocol === 'rws2' ? '2.0' : c.probableProtocol === 'rws1' ? '1.0' : '?';
-  return `${c.systemName} — ${c.host}:${c.port} (RWS ${proto})`;
+  return `${c.systemName} - ${c.host}:${c.port} (RWS ${proto})`;
 }
 
 /**
@@ -216,7 +216,7 @@ async function showDiscoveryPicker(
     action?: 'manual' | 'help';
   };
 
-  // mDNS announcements carry the system name — richer than a bare port probe.
+  // mDNS announcements carry the system name - richer than a bare port probe.
   // When both discovery paths find the same host:port, keep the mDNS entry.
   const mdnsKeys = new Set(mdnsFound.map(c => `${c.host}:${c.port}`));
   const scanOnly = found.filter(p => !mdnsKeys.has(`${p.host}:${p.port}`));
@@ -225,7 +225,7 @@ async function showDiscoveryPicker(
   const mdnsItems: Item[] = mdnsFound.map(c => ({
     label:       mdnsPickLabel(c),
     description: c.rwVersion ? `RobotWare ${c.rwVersion}` : undefined,
-    detail:      `Announced via mDNS — instance "${c.instanceName}"`,
+    detail:      `Announced via mDNS - instance "${c.instanceName}"`,
     mdns: c,
   }));
 
@@ -234,7 +234,7 @@ async function showDiscoveryPicker(
     description: p.authType === 'basic'
       ? 'RWS 2.0 · OmniCore · RobotWare 7 · HTTPS'
       : 'RWS 1.0 · IRC5 · RobotWare 6 · HTTP',
-    detail:      `Auto-detected — port ${p.port} responded to ${p.authType === 'basic' ? 'HTTP Basic' : 'HTTP Digest'} challenge`,
+    detail:      `Auto-detected - port ${p.port} responded to ${p.authType === 'basic' ? 'HTTP Basic' : 'HTTP Digest'} challenge`,
     probe: p,
   }));
 
@@ -270,14 +270,14 @@ async function showDiscoveryPicker(
   ];
 
   const titleSuffix = totalFound > 0
-    ? ` — ${totalFound} found`
-    : ' — none found on standard addresses';
+    ? ` - ${totalFound} found`
+    : ' - none found on standard addresses';
 
   const pick = await vscode.window.showQuickPick(items, {
     title: title + titleSuffix,
     placeHolder: totalFound > 0
       ? 'Select a controller to add, or enter an address manually'
-      : 'No controllers found — enter address or see connection guide',
+      : 'No controllers found - enter address or see connection guide',
     matchOnDescription: true,
   });
 
@@ -375,18 +375,18 @@ function buildDefaultName(p: DiscoveredController): string {
 
 /** Open a virtual document with full connection guidance. */
 async function showConnectionGuide(): Promise<void> {
-  const guide = `# ABB Robot — Connection Guide
+  const guide = `# ABB Robot - Connection Guide
 
 ## How to connect
 
-### IRC5 controllers (RobotWare 6.x — RWS 1.0)
+### IRC5 controllers (RobotWare 6.x - RWS 1.0)
 - **Direct service cable**: plug PC into the XS7 service port on the controller cabinet.
   Default IP: \`192.168.125.1\`, port \`80\`, HTTP.
 - **LAN port**: configure a static IP on your PC in the 192.168.125.x/24 subnet.
 - RWS is **enabled by default** on IRC5. No configuration needed.
-- Authentication: HTTP Digest (username \`Admin\`, password \`robotics\` by default — full grants).
+- Authentication: HTTP Digest (username \`Admin\`, password \`robotics\` by default - full grants).
 
-### OmniCore controllers (RobotWare 7.x — RWS 2.0)
+### OmniCore controllers (RobotWare 7.x - RWS 2.0)
 - **Enable RWS first** (one-time setup):
   \`FlexPendant → ☰ Menu → Configuration → Communication → Firewall Manager\`
   → enable **RobotWebServices** → restart controller.
@@ -423,7 +423,7 @@ If your controller uses a different port, use "Enter IP manually" and type \`ip:
 
 // ─── Settings helpers ────────────────────────────────────────────────────────
 
-/** A settings entry for a robot — like RobotConfig but the password field is optional (scrubbed after secret migration). */
+/** A settings entry for a robot - like RobotConfig but the password field is optional (scrubbed after secret migration). */
 type SavedRobotEntry = Omit<RobotConfig, 'password'> & { password?: string };
 
 /**
@@ -431,7 +431,7 @@ type SavedRobotEntry = Omit<RobotConfig, 'password'> & { password?: string };
  * SecretStorage first ('abbRobot.password/<robotId>'); a plaintext password
  * still sitting in the setting is only a fallback (pre-migration installs, or
  * settings synced from a machine whose secrets don't travel with Settings
- * Sync). If SecretStorage is unavailable, the settings value is used as-is —
+ * Sync). If SecretStorage is unavailable, the settings value is used as-is -
  * activation must never crash over a locked keychain.
  */
 async function loadConfigs(cfg: vscode.WorkspaceConfiguration, secrets: vscode.SecretStorage): Promise<RobotConfig[]> {
@@ -458,7 +458,7 @@ async function loadConfigs(cfg: vscode.WorkspaceConfiguration, secrets: vscode.S
       const secret = await secrets.get(passwordSecretKey(entry.id));
       if (secret !== undefined) { password = secret; }
     } catch (e) {
-      Logger.warn(`secure storage unavailable while loading "${entry.name}" — using settings password: ${e instanceof Error ? e.message : String(e)}`);
+      Logger.warn(`secure storage unavailable while loading "${entry.name}" - using settings password: ${e instanceof Error ? e.message : String(e)}`);
     }
     configs.push({ ...entry, password });
   }
@@ -476,7 +476,7 @@ async function migratePasswordsToSecrets(secrets: vscode.SecretStorage): Promise
   const cfg = vscode.workspace.getConfiguration('abbRobot');
   const inspected = cfg.inspect<SavedRobotEntry[]>('robots');
   // The extension itself only writes the Global target, but users can
-  // hand-edit workspace settings — scrub whichever targets hold passwords.
+  // hand-edit workspace settings - scrub whichever targets hold passwords.
   const targets: Array<{ value: SavedRobotEntry[] | undefined; target: vscode.ConfigurationTarget }> = [
     { value: inspected?.globalValue,    target: vscode.ConfigurationTarget.Global },
     { value: inspected?.workspaceValue, target: vscode.ConfigurationTarget.Workspace },
@@ -504,7 +504,7 @@ async function migratePasswordsToSecrets(secrets: vscode.SecretStorage): Promise
 
 async function saveConfigs(configs: RobotConfig[]): Promise<void> {
   // Passwords never go into settings (Settings Sync would upload them in
-  // plaintext) — they live in SecretStorage, keyed by robot id.
+  // plaintext) - they live in SecretStorage, keyed by robot id.
   const scrubbed = configs.map(({ password: _password, ...rest }) => rest);
   const cfg = vscode.workspace.getConfiguration('abbRobot');
   await cfg.update('robots', scrubbed, vscode.ConfigurationTarget.Global);
@@ -531,7 +531,7 @@ function extractRobotId(arg?: unknown): string | undefined {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // Install our VS Code-backed logger into abb-rws-client (RobotManager,
-  // RwsClient, RwsClient2 — including HTTP req/res tracing — all use this).
+  // RwsClient, RwsClient2 - including HTTP req/res tracing - all use this).
   setLogger({
     info:  (msg)        => Logger.info(msg),
     warn:  (msg)        => Logger.warn(msg),
@@ -539,10 +539,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     trace: (cat, msg, d) => Logger.trace(cat, msg, d),
     show:  () => Logger.show(),
   });
-  Logger.info(`extension activated — log file: ${Logger.getLogFilePath()}`);
+  Logger.info(`extension activated - log file: ${Logger.getLogFilePath()}`);
 
   // Move any plaintext passwords out of settings into SecretStorage before
-  // loading configs. Failure is non-fatal — passwords stay in settings and
+  // loading configs. Failure is non-fatal - passwords stay in settings and
   // the migration retries on next activation.
   try {
     const migrated = await migratePasswordsToSecrets(context.secrets);
@@ -552,13 +552,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       );
     }
   } catch (e) {
-    Logger.warn(`password migration to secure storage failed — passwords stay in settings for now: ${e instanceof Error ? e.message : String(e)}`);
+    Logger.warn(`password migration to secure storage failed - passwords stay in settings for now: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   const cfg   = vscode.workspace.getConfiguration('abbRobot');
-  // Schema minimum is 200 but settings.json edits bypass UI validation — clamp here too.
+  // Schema minimum is 200 but settings.json edits bypass UI validation - clamp here too.
   const refreshIntervalMs = Math.max(200, cfg.get<number>('refreshInterval', 1000));
-  // TLS verification stays off unless opted in — controllers ship self-signed certs.
+  // TLS verification stays off unless opted in - controllers ship self-signed certs.
   const strictTls = cfg.get<boolean>('strictTls', false);
   const multi = MultiRobotManager.fromConfigs(await loadConfigs(cfg, context.secrets), { refreshIntervalMs, strictTls });
   globalMulti = multi;
@@ -567,7 +567,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // MultiRobotManager.onError installs the listener on every current and future robot.
   multi.onError(async (msg, actions) => vscode.window.showErrorMessage(msg, ...actions));
 
-  // Providers — pass multi (satisfies the {state, onDidChange, listDirectory} shape)
+  // Providers - pass multi (satisfies the {state, onDidChange, listDirectory} shape)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const m = multi as any;
   const statusProvider  = new StatusTreeProvider(m);
@@ -584,7 +584,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Scratch documents opened by "Edit CFG Instance", keyed by document URI.
   // Saving one writes its attributes back to the robot it was opened FROM
-  // (robotId recorded at edit time) — the active robot may have changed since.
+  // (robotId recorded at edit time) - the active robot may have changed since.
   const cfgEditTargets = new Map<string, { robotId: string; domain: string; type: string; instance: string }>();
 
   context.subscriptions.push(
@@ -595,7 +595,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // headers via CompositeTreeProvider. Right-click context menus continue
     // to work because TreeItems' `contextValue` flows up unchanged.
     vscode.window.registerTreeDataProvider('abbRobot.robots', robotsProvider),
-    // Program panel — tabbed webview (Modules tab + Watch tab) with real
+    // Program panel - tabbed webview (Modules tab + Watch tab) with real
     // top-of-panel tab buttons, replacing the previous collapsible-section
     // composite tree. Existing commands (open, push, set PP, edit watch
     // value, etc.) are reachable from inline buttons on each row.
@@ -636,27 +636,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
 
     // Polling interval and TLS strictness are fixed at connect time (RobotManager
-    // options), so a changed setting only applies to managers built after it — offer a reload.
+    // options), so a changed setting only applies to managers built after it - offer a reload.
     vscode.workspace.onDidChangeConfiguration(e => {
       const changed = ['abbRobot.refreshInterval', 'abbRobot.strictTls']
         .find(key => e.affectsConfiguration(key));
       if (!changed) { return; }
       vscode.window.showInformationMessage(
-        `${changed} changed — reload the window to apply it.`,
+        `${changed} changed - reload the window to apply it.`,
         'Reload Window',
       ).then(choice => {
         if (choice === 'Reload Window') { vscode.commands.executeCommand('workbench.action.reloadWindow'); }
       });
     }),
 
-    // RAPID hover provider — shows ABB reference docs for instructions, functions, data types
+    // RAPID hover provider - shows ABB reference docs for instructions, functions, data types
     // when hovering over an identifier in any .mod / .sys / .prg file.
     vscode.languages.registerHoverProvider(
       [{ language: 'rapid' }, { scheme: 'file', pattern: '**/*.{mod,sys,prg,MOD,SYS,PRG}' }],
       new RapidHoverProvider(context.extensionPath, multi),
     ),
 
-    // RAPID completion (autocomplete + snippets) — same DB. Suggests every
+    // RAPID completion (autocomplete + snippets) - same DB. Suggests every
     // built-in instruction/function/data type plus a curated set of snippets
     // (e.g. `proc` → full PROC..ENDPROC skeleton; `MoveJ` → motion line with
     // tab-stops for ToPoint/Speed/Zone/Tool/WObj).
@@ -665,7 +665,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       new RapidCompletionProvider(context.extensionPath),
     ),
 
-    // RAPID signature help — pops a parameter list as the user fills args.
+    // RAPID signature help - pops a parameter list as the user fills args.
     // Fires on `(`, `,`, and ` ` (space) since instructions are space-separated.
     vscode.languages.registerSignatureHelpProvider(
       [{ language: 'rapid' }, { scheme: 'file', pattern: '**/*.{mod,sys,prg,MOD,SYS,PRG}' }],
@@ -673,7 +673,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       '(', ',', ' ',
     ),
 
-    // RAPID CodeLens — clickable "▶ Run this routine" / "▶ Set PP here" links above
+    // RAPID CodeLens - clickable "▶ Run this routine" / "▶ Set PP here" links above
     // every PROC/FUNC/TRAP declaration. The discoverable in-editor way to run
     // individual routines without leaving the file.
     vscode.languages.registerCodeLensProvider(
@@ -711,7 +711,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const sbMode = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 101);
   const sbExec = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   sbConn.text    = '$(circuit-board) ABB';
-  sbConn.tooltip = 'ABB Robot — click to add a robot';
+  sbConn.tooltip = 'ABB Robot - click to add a robot';
   sbConn.command = 'abbRobot.addRobot';
   sbConn.show();
   context.subscriptions.push(sbConn, sbMode, sbExec);
@@ -731,13 +731,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const s = multi.state;
     if (!s.connected) {
       sbConn.text            = '$(circuit-board) ABB';
-      sbConn.tooltip         = 'ABB Robot — no robot connected\nClick to add a robot';
+      sbConn.tooltip         = 'ABB Robot - no robot connected\nClick to add a robot';
       sbConn.command         = 'abbRobot.addRobot';
       sbConn.backgroundColor = undefined;
       sbMode.hide();
       sbExec.hide();
     } else {
-      // Connection pill — color reflects controller state.
+      // Connection pill - color reflects controller state.
       const ctrlIcon = s.ctrlstate === 'motoron'  ? '$(pass)'
                      : s.ctrlstate === 'guardstop' || s.ctrlstate === 'emergencystop' ? '$(error)'
                      : '$(warning)';
@@ -749,14 +749,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ? new vscode.ThemeColor('statusBarItem.errorBackground')
         : (s.ctrlstate !== 'motoron' ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined);
 
-      // Op-mode pill — lock icon when AUTO, unlock for manual modes.
+      // Op-mode pill - lock icon when AUTO, unlock for manual modes.
       const modeIcon = s.opmode === 'AUTO' ? '$(lock)' : '$(unlock)';
       sbMode.text            = `${modeIcon} ${s.opmode ?? '?'}`;
       sbMode.tooltip         = `Operation mode: ${s.opmode ?? '?'}\nClick to switch (VC only)`;
       sbMode.command         = 'abbRobot.setOpMode';
       sbMode.show();
 
-      // Exec pill — running-warning bg when RAPID is executing.
+      // Exec pill - running-warning bg when RAPID is executing.
       const isRunning = s.execstate === 'running';
       sbExec.text            = isRunning ? '$(play-circle) RUNNING' : '$(circle-outline) STOPPED';
       sbExec.tooltip         = `RAPID: ${s.execstate ?? '?'}  Cycle: ${s.execCycle ?? '?'}\nClick to ${isRunning ? 'stop' : 'start'}`;
@@ -769,7 +769,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // ─── Robot management commands ──────────────────────────────────────────────
 
-  Logger.info(`extension activated — ${multi.configs.length} saved robot(s)`);
+  Logger.info(`extension activated - ${multi.configs.length} saved robot(s)`);
 
   /**
    * Wrap registerCommand so every invocation is traced into the log file
@@ -785,7 +785,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       Logger.trace('command', `→ ${id}`, { args: args.map(a => {
         if (a === null || a === undefined) { return a; }
         if (typeof a === 'string' || typeof a === 'number' || typeof a === 'boolean') { return a; }
-        // Avoid serializing huge objects — TreeItem etc. include big icons / commands
+        // Avoid serializing huge objects - TreeItem etc. include big icons / commands
         const o = a as Record<string, unknown>;
         return { _kind: o.constructor?.name ?? 'object', label: o.label, id: o.id, contextValue: o.contextValue };
       })});
@@ -823,7 +823,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       );
       if (mdnsFound.length === 0) {
         const choice = await vscode.window.showInformationMessage(
-          'No controllers announced themselves via mDNS. Controllers on other subnets do not receive multicast — use the Add Robot wizard to scan or enter an address.',
+          'No controllers announced themselves via mDNS. Controllers on other subnets do not receive multicast - use the Add Robot wizard to scan or enter an address.',
           'Add Robot…',
         );
         if (choice === 'Add Robot…') { vscode.commands.executeCommand('abbRobot.addRobot'); }
@@ -833,10 +833,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         mdnsFound.map(c => ({
           label:       mdnsPickLabel(c),
           description: c.rwVersion ? `RobotWare ${c.rwVersion}` : undefined,
-          detail:      `Announced via mDNS — instance "${c.instanceName}"`,
+          detail:      `Announced via mDNS - instance "${c.instanceName}"`,
           mdns:        c,
         })),
-        { title: `Discovered controllers — ${mdnsFound.length} found`, placeHolder: 'Select a controller to add', matchOnDescription: true },
+        { title: `Discovered controllers - ${mdnsFound.length} found`, placeHolder: 'Select a controller to add', matchOnDescription: true },
       );
       if (!pick) { return; }
       const selected = await resolveMdnsPick(pick.mdns);
@@ -888,7 +888,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               lastError = e;
               const msg = e instanceof Error ? e.message : String(e);
               if ((msg.includes('503') || msg.toLowerCase().includes('busy')) && attempt < 20) {
-                progress.report({ message: `Controller busy — retrying… (${attempt}/20)` });
+                progress.report({ message: `Controller busy - retrying… (${attempt}/20)` });
                 await new Promise(r => setTimeout(r, 3000));
               } else {
                 // Non-busy error → fail fast
@@ -947,7 +947,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await storePasswordSecret(context.secrets, id, password);
       await saveConfigs(multi.configs);
 
-      const connect = await vscode.window.showInformationMessage(`✓ Saved — host: ${host.trim()}`, 'Reconnect');
+      const connect = await vscode.window.showInformationMessage(`✓ Saved - host: ${host.trim()}`, 'Reconnect');
       if (connect === 'Reconnect') { vscode.commands.executeCommand('abbRobot.connectRobot', id); }
     }),
 
@@ -1005,8 +1005,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tracedCommand('abbRobot.setSpeedRatio', async () => {
       const current = multi.state.speedRatio ?? 100;
       const input = await vscode.window.showInputBox({
-        title: 'Set Speed Ratio', prompt: '0–100 (AUTO mode only)', value: String(current),
-        validateInput: v => { const n = +v; return (isNaN(n) || n < 0 || n > 100) ? 'Must be 0–100' : undefined; },
+        title: 'Set Speed Ratio', prompt: '0-100 (AUTO mode only)', value: String(current),
+        validateInput: v => { const n = +v; return (isNaN(n) || n < 0 || n > 100) ? 'Must be 0-100' : undefined; },
       });
       if (input === undefined) { return; }
       try { await mgr(multi).setSpeedRatio(+input); vscode.window.showInformationMessage(`Speed ratio: ${input}%`); }
@@ -1078,9 +1078,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const confirm = await vscode.window.showWarningMessage(
           'This will move the robot. Make sure the workspace is clear and the robot is in MANR/MANF mode with motors on.',
           { modal: true },
-          'I understand — Jog',
+          'I understand - Jog',
         );
-        if (confirm !== 'I understand — Jog') { return; }
+        if (confirm !== 'I understand - Jog') { return; }
         jogConfirmed = true;
       }
 
@@ -1129,9 +1129,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const cur = cfg.get<number>('jog.speed', 10);
       const input = await vscode.window.showInputBox({
         title: 'Jog Speed',
-        prompt: 'Speed percentage (0–100). Lower is safer for first tries.',
+        prompt: 'Speed percentage (0-100). Lower is safer for first tries.',
         value: String(cur),
-        validateInput: v => { const n = +v; return isNaN(n) || n < 0 || n > 100 ? 'Must be 0–100' : undefined; },
+        validateInput: v => { const n = +v; return isNaN(n) || n < 0 || n > 100 ? 'Must be 0-100' : undefined; },
       });
       if (input === undefined) { return; }
       await cfg.update('jog.speed', +input, vscode.ConfigurationTarget.Global);
@@ -1194,14 +1194,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const domain = await vscode.window.showQuickPick(domains, { title: 'CFG domain' });
         if (!domain) { return; }
         const types = await m.listCfgTypes(domain);
-        const type = await vscode.window.showQuickPick(types, { title: `${domain} — type` });
+        const type = await vscode.window.showQuickPick(types, { title: `${domain} - type` });
         if (!type) { return; }
         const instances = await m.listCfgInstances(domain, type);
         if (instances.length === 0) {
           vscode.window.showInformationMessage(`No instances under ${domain}/${type}`);
           return;
         }
-        const instance = await vscode.window.showQuickPick(instances, { title: `${domain}/${type} — instance` });
+        const instance = await vscode.window.showQuickPick(instances, { title: `${domain}/${type} - instance` });
         if (!instance) { return; }
         const data = await m.getCfgInstance(domain, type, instance);
         const doc = await vscode.workspace.openTextDocument({
@@ -1220,7 +1220,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const m = mgr(multi);
         const [pp, mp] = await Promise.all([m.getProgramPointer(task), m.getMotionPointer(task)]);
         vscode.window.showInformationMessage(
-          `${task}:\n  PP: ${pp.module ?? '—'} / ${pp.routine ?? '—'} (row ${pp.row ?? '—'})\n  MP: ${mp.module ?? '—'} / ${mp.routine ?? '—'} (row ${mp.row ?? '—'})`,
+          `${task}:\n  PP: ${pp.module ?? '-'} / ${pp.routine ?? '-'} (row ${pp.row ?? '-'})\n  MP: ${mp.module ?? '-'} / ${mp.routine ?? '-'} (row ${mp.row ?? '-'})`,
           { modal: true },
         );
       } catch (e) { showError('Program pointer', e); }
@@ -1275,7 +1275,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const m = mgr(multi);
         const vt = await m.getVirtualTime();
         const action = await vscode.window.showInformationMessage(
-          `Virtual time: ${vt.time}s — ${vt.running ? 'running' : 'paused'}`,
+          `Virtual time: ${vt.time}s - ${vt.running ? 'running' : 'paused'}`,
           'Pause/Resume', 'Set scale 1x', 'Set scale 10x',
         );
         if (action === 'Pause/Resume') { await m.setVirtualTimeRunning(!vt.running); }
@@ -1314,21 +1314,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tracedCommand('abbRobot.calcIK', async () => {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
 
-      // Collect Cartesian target — pre-fill with current position if available
+      // Collect Cartesian target - pre-fill with current position if available
       const cur = multi.state.cartesian;
-      const xIn = await vscode.window.showInputBox({ title: 'IK — Cartesian Target (1/7)', prompt: 'X (mm)', value: cur ? String(Math.round(cur.x)) : '400', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
+      const xIn = await vscode.window.showInputBox({ title: 'IK - Cartesian Target (1/7)', prompt: 'X (mm)', value: cur ? String(Math.round(cur.x)) : '400', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
       if (xIn === undefined) { return; }
-      const yIn = await vscode.window.showInputBox({ title: 'IK — Cartesian Target (2/7)', prompt: 'Y (mm)', value: cur ? String(Math.round(cur.y)) : '0', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
+      const yIn = await vscode.window.showInputBox({ title: 'IK - Cartesian Target (2/7)', prompt: 'Y (mm)', value: cur ? String(Math.round(cur.y)) : '0', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
       if (yIn === undefined) { return; }
-      const zIn = await vscode.window.showInputBox({ title: 'IK — Cartesian Target (3/7)', prompt: 'Z (mm)', value: cur ? String(Math.round(cur.z)) : '600', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
+      const zIn = await vscode.window.showInputBox({ title: 'IK - Cartesian Target (3/7)', prompt: 'Z (mm)', value: cur ? String(Math.round(cur.z)) : '600', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
       if (zIn === undefined) { return; }
-      const q1In = await vscode.window.showInputBox({ title: 'IK — Cartesian Target (4/7)', prompt: 'Q1 (quaternion)', value: cur ? String(cur.q1.toFixed(4)) : '1', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
+      const q1In = await vscode.window.showInputBox({ title: 'IK - Cartesian Target (4/7)', prompt: 'Q1 (quaternion)', value: cur ? String(cur.q1.toFixed(4)) : '1', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
       if (q1In === undefined) { return; }
-      const q2In = await vscode.window.showInputBox({ title: 'IK — Cartesian Target (5/7)', prompt: 'Q2 (quaternion)', value: cur ? String(cur.q2.toFixed(4)) : '0', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
+      const q2In = await vscode.window.showInputBox({ title: 'IK - Cartesian Target (5/7)', prompt: 'Q2 (quaternion)', value: cur ? String(cur.q2.toFixed(4)) : '0', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
       if (q2In === undefined) { return; }
-      const q3In = await vscode.window.showInputBox({ title: 'IK — Cartesian Target (6/7)', prompt: 'Q3 (quaternion)', value: cur ? String(cur.q3.toFixed(4)) : '0', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
+      const q3In = await vscode.window.showInputBox({ title: 'IK - Cartesian Target (6/7)', prompt: 'Q3 (quaternion)', value: cur ? String(cur.q3.toFixed(4)) : '0', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
       if (q3In === undefined) { return; }
-      const q4In = await vscode.window.showInputBox({ title: 'IK — Cartesian Target (7/7)', prompt: 'Q4 (quaternion)', value: cur ? String(cur.q4.toFixed(4)) : '0', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
+      const q4In = await vscode.window.showInputBox({ title: 'IK - Cartesian Target (7/7)', prompt: 'Q4 (quaternion)', value: cur ? String(cur.q4.toFixed(4)) : '0', validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
       if (q4In === undefined) { return; }
 
       const pos = { x: +xIn, y: +yIn, z: +zIn, q1: +q1In, q2: +q2In, q3: +q3In, q4: +q4In };
@@ -1388,17 +1388,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       const pick = await vscode.window.showQuickPick(
         [
-          { label: 'AUTO', detail: current === 'AUTO' ? '(already current)' : 'Production mode — full speed, motion runs from RAPID' },
-          { label: 'MANR', detail: current === 'MANR' ? '(already current)' : 'Manual Reduced — 250mm/s max, deadman required (FlexPendant)' },
-          { label: 'MANF', detail: current === 'MANF' ? '(already current)' : 'Manual Full — full speed in manual; rare, requires FullSpeed license' },
+          { label: 'AUTO', detail: current === 'AUTO' ? '(already current)' : 'Production mode - full speed, motion runs from RAPID' },
+          { label: 'MANR', detail: current === 'MANR' ? '(already current)' : 'Manual Reduced - 250mm/s max, deadman required (FlexPendant)' },
+          { label: 'MANF', detail: current === 'MANF' ? '(already current)' : 'Manual Full - full speed in manual; rare, requires FullSpeed license' },
         ],
-        { placeHolder: `Switch operation mode (currently ${current}). VC only — real hardware uses the key switch.` },
+        { placeHolder: `Switch operation mode (currently ${current}). VC only - real hardware uses the key switch.` },
       );
       if (!pick) { return; }
 
       // Pre-flight: don't call the controller for a no-op transition.
       if (pick.label === current) {
-        vscode.window.showInformationMessage(`Already in ${current} — nothing to change.`);
+        vscode.window.showInformationMessage(`Already in ${current} - nothing to change.`);
         return;
       }
 
@@ -1407,13 +1407,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           { location: vscode.ProgressLocation.Notification, title: `Switching to ${pick.label}…`, cancellable: false },
           async () => mgr(multi).setOperationMode(pick.label as 'AUTO' | 'MANR' | 'MANF'),
         );
-        vscode.window.showInformationMessage(`✓ Requested ${pick.label}. Check the FlexPendant simulator — the actual switch may require tapping Accept on a confirmation popup.`);
+        vscode.window.showInformationMessage(`✓ Requested ${pick.label}. Check the FlexPendant simulator - the actual switch may require tapping Accept on a confirmation popup.`);
       } catch (e: unknown) {
         const raw = e instanceof Error ? e.message : String(e);
         if (/timeout/i.test(raw)) {
           vscode.window.showWarningMessage(
             `The op-mode change request is still pending on the controller. ` +
-            `Open the FlexPendant simulator in RobotStudio — there should be a confirmation dialog waiting for Accept/Cancel.`,
+            `Open the FlexPendant simulator in RobotStudio - there should be a confirmation dialog waiting for Accept/Cancel.`,
             { modal: false },
           );
           Logger.warn(`setOperationMode timed out ${pick.label} from ${current}: ${raw}`);
@@ -1423,9 +1423,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           vscode.window.showErrorMessage(
             `Controller refused the ${pick.label} switch.\n\n` +
             `Most common causes (in order):\n` +
-            `  • A confirmation dialog is pending on the FlexPendant simulator — open the pendant view in RobotStudio and Accept/Cancel any open dialog, then retry.\n` +
+            `  • A confirmation dialog is pending on the FlexPendant simulator - open the pendant view in RobotStudio and Accept/Cancel any open dialog, then retry.\n` +
             `  • Op-mode is locked. Run "Unlock Operation Mode" first.\n` +
-            `  • Going TO AUTO from MANR/MANF requires RMMP. Run "Request Remote Control" first; you'll get a popup on the pendant — accept it.\n` +
+            `  • Going TO AUTO from MANR/MANF requires RMMP. Run "Request Remote Control" first; you'll get a popup on the pendant - accept it.\n` +
             `  • Real hardware: only the FlexPendant key switch can change op-mode. RWS won't help.`,
             { modal: true },
           );
@@ -1613,7 +1613,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
 
       try {
-        // Set PP at the chosen routine — with auto-recovery on `main` collision
+        // Set PP at the chosen routine - with auto-recovery on `main` collision
         try {
           await active.setPPToRoutine(taskName, moduleName, routineName);
         } catch (e) {
@@ -1679,9 +1679,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         .map(r => ({
           label: r.name,
           description: r.symtyp.toUpperCase() + (r.local ? ' (LOCAL)' : ''),
-          detail: r.symtyp.toLowerCase() === 'prc' ? 'Procedure — runnable via Start' :
-                  r.symtyp.toLowerCase() === 'fun' ? 'Function — needs args; setting PP here is unusual' :
-                  r.symtyp.toLowerCase() === 'trp' ? 'Trap — interrupt handler; not normally invoked manually' :
+          detail: r.symtyp.toLowerCase() === 'prc' ? 'Procedure - runnable via Start' :
+                  r.symtyp.toLowerCase() === 'fun' ? 'Function - needs args; setting PP here is unusual' :
+                  r.symtyp.toLowerCase() === 'trp' ? 'Trap - interrupt handler; not normally invoked manually' :
                   '',
           name: r.name,
         }));
@@ -1741,7 +1741,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         await mgr(multi).requestRmmp('modify');
         vscode.window.showInformationMessage(
-          'RMMP request sent. Open the FlexPendant — a popup is asking "Allow remote user to modify?". Tap Allow.',
+          'RMMP request sent. Open the FlexPendant - a popup is asking "Allow remote user to modify?". Tap Allow.',
           { modal: false },
         );
       } catch (e: unknown) {
@@ -1751,12 +1751,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           // logged-in user* doesn't have permission to even REQUEST RMMP.
           // This is a UAS configuration issue, not a runtime mastership issue.
           await vscode.window.showErrorMessage(
-            'Cannot request remote control — the logged-in user does not have UAS grants to do so.\n\n' +
+            'Cannot request remote control - the logged-in user does not have UAS grants to do so.\n\n' +
             'Common causes:\n' +
             '  • The logged-in user lacks the "Remote Login" / "Remote Control" / "Modify Current Value" grants ' +
             '(common with "Default User"; the built-in "Admin" account usually has them).\n' +
             '  • The virtual controller has no FlexPendant attached (no popup target).\n' +
-            '  • The controller is in AUTO mode where RMMP may not apply — try the operation directly.\n\n' +
+            '  • The controller is in AUTO mode where RMMP may not apply - try the operation directly.\n\n' +
             'Fix: open the FlexPendant → ABB menu → Control Panel → User Authorization → Users → ' +
             'add a user with the "Remote Login" + "Modify Current Value" + "Edit RAPID" grants, ' +
             'and reconnect with that user (Configure Connection in the Status panel).',
@@ -1774,7 +1774,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       try {
         const priv = await mgr(multi).getRmmpPrivilege();
         const explain = priv === 'none' ? 'No remote-modify rights. Click "Request Remote Control" to ask the FlexPendant operator.'
-                      : priv === 'pending modify' ? 'Approval pending — a popup is on the FlexPendant.'
+                      : priv === 'pending modify' ? 'Approval pending - a popup is on the FlexPendant.'
                       : priv === 'modify'    ? 'Remote-modify granted. You can do RAPID/exec/IO writes.'
                       : priv === 'exclusive' ? 'Exclusive control granted (rare).'
                       : priv === 'unsupported' ? 'Controller does not expose RMMP.'
@@ -1783,9 +1783,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } catch (e: unknown) { showError('Show RMMP', e, multi); }
     }),
 
-    // ─── Push / Pull workflow — the git story for RAPID files ──────────────
+    // ─── Push / Pull workflow - the git story for RAPID files ──────────────
     // The point: edit RAPID at desk, version control it in git, deploy with one
-    // command. ABB's RobotStudio doesn't do this naturally — that's our niche.
+    // command. ABB's RobotStudio doesn't do this naturally - that's our niche.
 
     tracedCommand('abbRobot.pullAllModules', async () => {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
@@ -1793,7 +1793,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!active) { vscode.window.showWarningMessage('No active robot.'); return; }
       const taskName = multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
 
-      // Pick a destination folder — defaults to the workspace root if any, else asks.
+      // Pick a destination folder - defaults to the workspace root if any, else asks.
       const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
       let destFolder: vscode.Uri | undefined;
       if (wsRoot) {
@@ -1885,7 +1885,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       if (!filePath) { vscode.window.showWarningMessage('No file to push. Open or right-click a .mod file.'); return; }
       if (!/\.(mod|sys|prg)$/i.test(filePath)) {
-        vscode.window.showWarningMessage(`Cannot push ${path.basename(filePath)} — only .mod / .sys / .prg files.`);
+        vscode.window.showWarningMessage(`Cannot push ${path.basename(filePath)} - only .mod / .sys / .prg files.`);
         return;
       }
       const taskName = multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
@@ -1923,18 +1923,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const filePath = localUri.fsPath;
       if (!/\.(mod|sys|prg)$/i.test(filePath)) {
-        vscode.window.showWarningMessage(`Cannot diff ${path.basename(filePath)} — only .mod / .sys / .prg files.`);
+        vscode.window.showWarningMessage(`Cannot diff ${path.basename(filePath)} - only .mod / .sys / .prg files.`);
         return;
       }
       const taskName = multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
       const ext = path.extname(filePath);
       // Strip any legacy `.controller` / `.from-controller` suffix the user
       // might still have on disk from earlier-version files. Real RAPID
-      // module names can't contain dots — the controller 400s on them.
+      // module names can't contain dots - the controller 400s on them.
       const moduleName = path.basename(filePath, ext).replace(/\.(controller|from-controller)$/i, '');
       try {
         // Use the abb-controller: scheme so VS Code shows it as a virtual,
-        // read-only doc — and so re-running Diff on this tab is a no-op
+        // read-only doc - and so re-running Diff on this tab is a no-op
         // (handled by the scheme check above) instead of fetching a bogus
         // module name like "IOTest.controller".
         const remoteUri = ControllerSourceProvider.uriFor(taskName, moduleName, ext);
@@ -1948,7 +1948,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } catch (e: unknown) { showError('Diff with controller', e, multi); }
     }),
 
-    // ─── Module source pull — open a loaded module's RAPID text in an editor tab
+    // ─── Module source pull - open a loaded module's RAPID text in an editor tab
     tracedCommand('abbRobot.openModuleSource', async (arg?: unknown) => {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
       const taskName = multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
@@ -1999,7 +1999,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Creating backup ${name}…` }, async (p) => {
         try {
           await mgr(multi).createBackup(name);
-          // Poll status — backups can take 30-90s on real hardware
+          // Poll status - backups can take 30-90s on real hardware
           for (let i = 0; i < 60; i++) {
             await new Promise(r => setTimeout(r, 1500));
             const s = await mgr(multi).getBackupStatus();
@@ -2103,7 +2103,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (!instance) { return; }
         const current = await m.getCfgInstance(domain, type, instance);
         const json = `// CFG instance: ${domain}/${type}/${instance}\n// Edit attribute values, then save (Ctrl+S) to write them back to the controller.\n${JSON.stringify(current, null, 2)}`;
-        // Real file, not untitled — Ctrl+S must fire onDidSaveTextDocument for the
+        // Real file, not untitled - Ctrl+S must fire onDidSaveTextDocument for the
         // write-back below. .jsonc so the header comments don't squiggle.
         const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const scratchDir = wsRoot ?? path.join(require('os').homedir(), '.abb-rws-extension', 'scratch');
@@ -2120,19 +2120,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidSaveTextDocument(async doc => {
       const target = cfgEditTargets.get(doc.uri.toString());
       if (!target) { return; }
-      // Write back to the robot the scratch file was opened from — never the
+      // Write back to the robot the scratch file was opened from - never the
       // currently active one, which may be a different robot by now.
       const entry = multi.entries.find(e => e.id === target.robotId);
       const robotName = entry?.config.name ?? target.robotId;
       if (!entry) {
         vscode.window.showErrorMessage(
-          `CFG not written — robot "${robotName}" (which this instance was opened from) is no longer in the robot list. Re-open the instance to edit it.`,
+          `CFG not written - robot "${robotName}" (which this instance was opened from) is no longer in the robot list. Re-open the instance to edit it.`,
         );
         return;
       }
       if (!entry.manager.state.connected) {
         vscode.window.showWarningMessage(
-          `CFG not written — "${robotName}" (which this instance was opened from) is disconnected. Reconnect it and save again.`,
+          `CFG not written - "${robotName}" (which this instance was opened from) is disconnected. Reconnect it and save again.`,
         );
         return;
       }
@@ -2147,7 +2147,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           attrs[k] = String(v);
         }
       } catch (e) {
-        vscode.window.showErrorMessage(`CFG not written — document is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
+        vscode.window.showErrorMessage(`CFG not written - document is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
         return;
       }
       try {
@@ -2212,8 +2212,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!filepath) { return; }
       const action = await vscode.window.showQuickPick(
         [
-          { label: 'add', detail: 'Merge (default) — adds attributes/instances; existing ones unchanged' },
-          { label: 'replace', detail: 'Overwrite — file replaces matching domain entirely' },
+          { label: 'add', detail: 'Merge (default) - adds attributes/instances; existing ones unchanged' },
+          { label: 'replace', detail: 'Overwrite - file replaces matching domain entirely' },
           { label: 'add-with-reset', detail: 'Reset domain first, then add from file' },
         ],
         { placeHolder: 'Load action' },
@@ -2412,17 +2412,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
 
     /**
-     * Create a NEW RAPID task. ABB tasks aren't a runtime concept — they're
+     * Create a NEW RAPID task. ABB tasks aren't a runtime concept - they're
      * configured in the controller's CFG (`SYS/CAB_TASKS`) at boot. This
      * command writes the new task entry there, then prompts for a restart.
      *
      * CFG attrs (live-confirmed against OmniCore RW7.21 + IRC5 RW6.16 via
-     * GET /rw/cfg/SYS/CAB_TASKS/attributes — the schema is identical on both):
-     *   Name        — task name (e.g. T_BCKGRND2)
-     *   Type        — 'NORMAL' | 'STATIC' | 'SEMISTATIC'
-     *   TrustLevel  — 'NoSafety' (default) | 'TPSysHalt' | 'TPSysStop' | 'SysFail' | 'SysStop'
-     *   Entry       — entrypoint routine ('main' usually)
-     *   MotionTask  — 'TRUE' / 'FALSE'  (TRUE = controls a robot). The schema
+     * GET /rw/cfg/SYS/CAB_TASKS/attributes - the schema is identical on both):
+     *   Name        - task name (e.g. T_BCKGRND2)
+     *   Type        - 'NORMAL' | 'STATIC' | 'SEMISTATIC'
+     *   TrustLevel  - 'NoSafety' (default) | 'TPSysHalt' | 'TPSysStop' | 'SysFail' | 'SysStop'
+     *   Entry       - entrypoint routine ('main' usually)
+     *   MotionTask  - 'TRUE' / 'FALSE'  (TRUE = controls a robot). The schema
      *     declares a bool domain FALSE/TRUE. Live-verified 2026-07-09 on RW6.16:
      *     ?action=set accepts either casing (204) and readback reports lowercase;
      *     we write the schema's casing.
@@ -2436,7 +2436,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const m = mgr(multi);
 
       const taskName = await vscode.window.showInputBox({
-        title: 'New RAPID Task — name',
+        title: 'New RAPID Task - name',
         prompt: 'Task name (e.g. T_BCKGRND2)',
         validateInput: v => /^T_[A-Za-z][A-Za-z0-9_]*$/.test(v) ? undefined : 'Task name must start with T_ and contain only letters/digits/underscore',
       });
@@ -2445,8 +2445,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const type = await vscode.window.showQuickPick(
         [
           { label: 'NORMAL',     detail: 'Standard motion task (controls a robot)' },
-          { label: 'STATIC',     detail: 'Background task — runs once at boot, no automatic restart' },
-          { label: 'SEMISTATIC', detail: 'Background task — auto-restarts after Stop/E-stop' },
+          { label: 'STATIC',     detail: 'Background task - runs once at boot, no automatic restart' },
+          { label: 'SEMISTATIC', detail: 'Background task - auto-restarts after Stop/E-stop' },
         ],
         { placeHolder: 'Task type' },
       );
@@ -2461,7 +2461,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!motionTask) { return; }
 
       const entryRoutine = await vscode.window.showInputBox({
-        title: 'New RAPID Task — entry routine',
+        title: 'New RAPID Task - entry routine',
         prompt: 'PROC name to call at task start',
         value: 'main',
       });
@@ -2469,7 +2469,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       const trustLevel = await vscode.window.showQuickPick(
         ['NoSafety', 'TPSysHalt', 'TPSysStop', 'SysFail', 'SysStop'],
-        { placeHolder: 'Trust level (advanced — leave NoSafety unless you know)' },
+        { placeHolder: 'Trust level (advanced - leave NoSafety unless you know)' },
       );
       if (!trustLevel) { return; }
 
@@ -2590,7 +2590,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
       // Single-prompt UX: user types the FULL path of the new directory
       // (e.g. "HOME/myfolder" or "$HOME/test/sub"); we split into parent+name
-      // automatically. The previous two-step prompt confused users — they'd
+      // automatically. The previous two-step prompt confused users - they'd
       // type the new folder's name in the "parent" box and get a 404.
       let defaultPath = '$HOME/new-folder';
       const node = (arg && typeof arg === 'object' && 'node' in arg)
@@ -2657,7 +2657,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     tracedCommand('abbRobot.deleteControllerFile', async (arg: unknown) => {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
-      // Works for both files and directories — the RWS DELETE /fileservice/{path}
+      // Works for both files and directories - the RWS DELETE /fileservice/{path}
       // endpoint handles both. The contextValue (controllerFile|controllerDir) just
       // tells VS Code where to show the menu entry; the handler is the same.
       const node = (arg && typeof arg === 'object' && 'node' in arg)
@@ -2702,14 +2702,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } else if (node && typeof node === 'object' && 'name' in node && (node as Signal).name) {
         signalName = (node as Signal).name; signalType = (node as Signal).type; currentValue = (node as Signal).lvalue;
       } else {
-        // Invoked from view title or command palette — prompt for signal name
+        // Invoked from view title or command palette - prompt for signal name
         signalName = await vscode.window.showInputBox({ title: 'Write Signal', prompt: 'Signal name' });
         if (!signalName) { return; }
       }
       const isDigital = signalType === 'DO';
       let value: string | undefined;
       if (isDigital) {
-        const pick = await vscode.window.showQuickPick([{ label: '0 — Off', value: '0' }, { label: '1 — On', value: '1' }], { placeHolder: `Current: ${currentValue ?? '?'}` });
+        const pick = await vscode.window.showQuickPick([{ label: '0 - Off', value: '0' }, { label: '1 - On', value: '1' }], { placeHolder: `Current: ${currentValue ?? '?'}` });
         if (!pick) { return; }
         value = pick.value;
       } else {
@@ -2757,23 +2757,23 @@ function friendlyErrorMessage(label: string, e: unknown, multi?: MultiRobotManag
     // in MANR mode, which automatically holds rapid mastership as a safety measure).
     if (raw.toLowerCase().includes('held by someone else') || raw.toLowerCase().includes('mastership')) {
       if (opmode === 'MANR' || opmode === 'MANF') {
-        return `${label} blocked — in ${opmode} mode the FlexPendant holds rapid mastership for safety. Switch to AUTO mode (FlexPendant key switch) so the extension can acquire mastership, then retry.`;
+        return `${label} blocked - in ${opmode} mode the FlexPendant holds rapid mastership for safety. Switch to AUTO mode (FlexPendant key switch) so the extension can acquire mastership, then retry.`;
       }
-      return `${label} blocked — another user (likely FlexPendant) holds the required mastership. Release control on the FlexPendant or switch to AUTO mode.`;
+      return `${label} blocked - another user (likely FlexPendant) holds the required mastership. Release control on the FlexPendant or switch to AUTO mode.`;
     }
     if (isWriteOp) {
       if (opmode === 'MANR' || opmode === 'MANF') {
         return `${label} requires AUTO mode (currently ${opmode}). Switch to AUTO via the FlexPendant key switch, then retry.`;
       }
       if (ctrlstate === 'guardstop') {
-        return `${label} blocked — controller is in guardstop (safety chain open). On the FlexPendant: hold the Enable button (deadman) and turn motors on locally first.`;
+        return `${label} blocked - controller is in guardstop (safety chain open). On the FlexPendant: hold the Enable button (deadman) and turn motors on locally first.`;
       }
       if (raw.toLowerCase().includes('for user')) {
         return `${label} requires Remote Control approval. Open the FlexPendant and approve the popup that asks "Allow remote user to modify?", then retry.`;
       }
     }
     if (/jog/i.test(label)) {
-      return `Jog blocked — ABB safety design restricts remote jog. Use the FlexPendant for jogging.`;
+      return `Jog blocked - ABB safety design restricts remote jog. Use the FlexPendant for jogging.`;
     }
   }
 
@@ -2790,7 +2790,7 @@ function friendlyErrorMessage(label: string, e: unknown, multi?: MultiRobotManag
   // -1073442809 = "Current execution state does not allow this operation"
   // → user clicked Start without setting PP first
   if (raw.toLowerCase().includes('current execution state does not allow') || raw.includes('-1073442809')) {
-    return `${label} blocked — RAPID is in an invalid state to start. Click "PP to Main" first to set the program pointer, then Start.`;
+    return `${label} blocked - RAPID is in an invalid state to start. Click "PP to Main" first to set the program pointer, then Start.`;
   }
 
   // -1073442802 / icode -519 → Semantic error.
@@ -2799,13 +2799,13 @@ function friendlyErrorMessage(label: string, e: unknown, multi?: MultiRobotManag
   // semantic error and rejects ALL PP-to-Routine calls (even to other routines).
   // Other causes: undeclared symbols in the loaded module, type mismatches.
   if (raw.includes('Semantic error') || raw.includes('icode:-519')) {
-    return `${label} blocked — RAPID program has a semantic error. Most often this means two loaded modules each define PROC main(). Open the Modules panel, right-click any of the program modules, and Unload Module. Then try again.`;
+    return `${label} blocked - RAPID program has a semantic error. Most often this means two loaded modules each define PROC main(). Open the Modules panel, right-click any of the program modules, and Unload Module. Then try again.`;
   }
 
   // org_code -519 (without "Semantic error" prefix) → Routine not found.
   // Common after Upload Module on a module without PROC main(), or after a manual unload.
   if (raw.includes('org_code: -519') || raw.includes('-519,')) {
-    return `${label} can't run — the program pointer isn't set. Click "PP to Main" first (the loaded module needs a PROC main()), or use "Set PP to routine" to point at a specific procedure.`;
+    return `${label} can't run - the program pointer isn't set. Click "PP to Main" first (the loaded module needs a PROC main()), or use "Set PP to routine" to point at a specific procedure.`;
   }
 
   // -4501 / 0xc004841d = symbol-table inconsistency, often from broken module load
@@ -2862,7 +2862,7 @@ function showError(label: string, e: unknown, multi?: MultiRobotManager) {
           const before = await active.getRmmpPrivilege().catch(() => 'unknown');
           if (before === 'modify' || before === 'exclusive') {
             vscode.window.showInformationMessage(
-              `RMMP is already ${before} — but the operation still failed. ` +
+              `RMMP is already ${before} - but the operation still failed. ` +
               `The 403 likely has a different cause: another client holds rapid mastership, motors are off, op-mode is locked, ` +
               `or the user lacks a specific UAS grant for this operation.`,
               { modal: false },
@@ -2876,14 +2876,14 @@ function showError(label: string, e: unknown, multi?: MultiRobotManager) {
           try {
             await active.requestRmmp('modify');
             vscode.window.showInformationMessage(
-              'RMMP request sent. Open the FlexPendant — a popup is asking "Allow remote user to modify?". Tap Allow, then retry the operation.',
+              'RMMP request sent. Open the FlexPendant - a popup is asking "Allow remote user to modify?". Tap Allow, then retry the operation.',
               { modal: false },
             );
           } catch (rmmpErr) {
             const raw = rmmpErr instanceof Error ? rmmpErr.message : String(rmmpErr);
             if (/HTTP 403/.test(raw)) {
               vscode.window.showErrorMessage(
-                'Cannot request RMMP — the logged-in user lacks the grant.\n\n' +
+                'Cannot request RMMP - the logged-in user lacks the grant.\n\n' +
                 'On the FlexPendant: ABB menu → Control Panel → User Authorization. ' +
                 'Add a user with "Remote Login", "Modify Current Value", "Edit RAPID" grants, then reconnect with that user.',
                 { modal: true },
@@ -2935,7 +2935,7 @@ function pad(n: number): string { return String(n).padStart(2, '0'); }
  * Pull a file's content into a real file with its proper name + extension,
  * then open it. Used by "Open Module Source" and "Open Controller File" so
  * the resulting editor tab is a real `.mod`/`.sys`/`.prg` file (not an
- * "Untitled-N" doc) — which means Push, Diff, language server, and inlay
+ * "Untitled-N" doc) - which means Push, Diff, language server, and inlay
  * hints all work without special-casing.
  *
  * Location preference:
@@ -2944,7 +2944,7 @@ function pad(n: number): string { return String(n).padStart(2, '0'); }
  *   2. A scratch folder at `~/.abb-rws-extension/scratch/` otherwise.
  *
  * Collision handling: if the destination already has a file with the same
- * name we ASK the user — open the existing local copy, overwrite with the
+ * name we ASK the user - open the existing local copy, overwrite with the
  * controller's version, or cancel. We deliberately do NOT silently rename
  * to `.controller.mod` because that creates an invalid RAPID module name
  * and breaks downstream Push/Diff (controller rejects module name with
@@ -2994,7 +2994,7 @@ async function extractTaskName(arg: unknown, candidates: string[]): Promise<stri
  * Detect and offer to resolve a "two `main` procs" semantic-error collision.
  *
  * RAPID rejects PP-to-Routine with `icode:-519 "Semantic error"` when more
- * than one loaded module defines `PROC main()` — even when the user is
+ * than one loaded module defines `PROC main()` - even when the user is
  * trying to set PP to a different routine entirely. This breaks the natural
  * "load my new module + run a routine" workflow because the controller's
  * default Module1 (or a previously-loaded test module) already has main.
@@ -3006,7 +3006,7 @@ async function extractTaskName(arg: unknown, candidates: string[]): Promise<stri
  *
  * Returns true if the collision was resolved (caller should retry the
  * original op). Returns false if not a collision, user cancelled, or
- * resolution failed — caller should surface the original error.
+ * resolution failed - caller should surface the original error.
  */
 async function tryResolveMainCollision(
   robot: import('abb-rws-client').RobotManager,
@@ -3026,7 +3026,7 @@ async function tryResolveMainCollision(
     try {
       const routines = await robot.listRoutines(taskName, m);
       if (routines.some(r => r.name.toLowerCase() === 'main')) { withMain.push(m); }
-    } catch { /* skip — module might be in a state we can't query */ }
+    } catch { /* skip - module might be in a state we can't query */ }
   }
   if (withMain.length < 2) { return false; }   // not a main collision after all
 
@@ -3043,7 +3043,7 @@ async function tryResolveMainCollision(
     toUnload = others[0];
   } else {
     const pick = await vscode.window.showQuickPick(
-      withMain.map(m => ({ label: m, description: m === currentModule ? '(current — keep)' : 'unload this one' })),
+      withMain.map(m => ({ label: m, description: m === currentModule ? '(current - keep)' : 'unload this one' })),
       { placeHolder: `${withMain.length} modules have PROC main(). Pick one to UNLOAD.` },
     );
     if (!pick || pick.label === currentModule) { return false; }
@@ -3052,7 +3052,7 @@ async function tryResolveMainCollision(
 
   try {
     await robot.unloadModule(taskName, toUnload);
-    vscode.window.setStatusBarMessage(`✓ Unloaded "${toUnload}" — retrying…`, 3000);
+    vscode.window.setStatusBarMessage(`✓ Unloaded "${toUnload}" - retrying…`, 3000);
     return true;
   } catch (e) {
     showError(`Unload ${toUnload}`, e, multi);

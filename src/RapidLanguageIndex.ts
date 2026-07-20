@@ -8,7 +8,7 @@ import { Logger } from './Logger';
  *
  * Scope: line-based regex parsing, sufficient for ABB-shaped RAPID code
  * (declarations on their own line, single-line `!` comments). We skip
- * full grammar parsing — RAPID files are small (< 1000 lines typically)
+ * full grammar parsing - RAPID files are small (< 1000 lines typically)
  * and this index regenerates on save in milliseconds.
  *
  * Symbol kinds detected:
@@ -33,9 +33,9 @@ export interface RapidSymbol {
   kind: RapidSymbolKind;
   isLocal: boolean;
   containerModule: string;
-  /** Range of the entire declaration line(s) — for VS Code's outline body. */
+  /** Range of the entire declaration line(s) - for VS Code's outline body. */
   range: vscode.Range;
-  /** Range of just the symbol name — for the symbol's selection. */
+  /** Range of just the symbol name - for the symbol's selection. */
   selectionRange: vscode.Range;
   /** RAPID datatype, when applicable (vars/persistents/constants/funcs). */
   datatype?: string;
@@ -47,7 +47,7 @@ export class RapidLanguageIndex implements vscode.Disposable {
   private watcher?: vscode.FileSystemWatcher;
   private disposables: vscode.Disposable[] = [];
 
-  /** Fires when the index changes — providers can use this if they cache. */
+  /** Fires when the index changes - providers can use this if they cache. */
   private _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChange = this._onDidChange.event;
 
@@ -125,13 +125,13 @@ export class RapidLanguageIndex implements vscode.Disposable {
     const symbols: RapidSymbol[] = [];
     let containerModule = '';
 
-    // Regex helpers — case-insensitive. We strip `!`-comments line-by-line first.
+    // Regex helpers - case-insensitive. We strip `!`-comments line-by-line first.
     const reModule = /^\s*MODULE\s+(\w+)/i;
     const reProc   = /^\s*(LOCAL\s+)?PROC\s+(\w+)\s*\(/i;
     const reFunc   = /^\s*(LOCAL\s+)?FUNC\s+(\w+)\s+(\w+)\s*\(/i;
     const reTrap   = /^\s*(LOCAL\s+)?TRAP\s+(\w+)/i;
     // Data declarations take an optional LOCAL or TASK scope modifier
-    // (TASK PERS / TASK VAR are task-persistent — same as the grammar).
+    // (TASK PERS / TASK VAR are task-persistent - same as the grammar).
     const reVar    = /^\s*(LOCAL\s+|TASK\s+)?VAR\s+(\w+)\s+(\w+)/i;
     const rePers   = /^\s*(LOCAL\s+|TASK\s+)?PERS\s+(\w+)\s+(\w+)/i;
     const reConst  = /^\s*(LOCAL\s+|TASK\s+)?CONST\s+(\w+)\s+(\w+)/i;
@@ -218,7 +218,7 @@ export class RapidLanguageIndex implements vscode.Disposable {
    * Find every declaration of `name` across the workspace.
    * Returns the file URIs + symbol metadata. Routine names are global within
    * a task at runtime, but at the source level a routine can only be defined
-   * in one module — so most lookups return one location.
+   * in one module - so most lookups return one location.
    */
   findDeclarations(name: string): Array<{ uri: vscode.Uri; symbol: RapidSymbol }> {
     const lower = name.toLowerCase();
@@ -235,7 +235,7 @@ export class RapidLanguageIndex implements vscode.Disposable {
   /**
    * Scan every indexed file for occurrences of `name` as a standalone
    * identifier (not inside a comment or string). Returns each match as a
-   * `Location`. Includes the declaration itself — VS Code de-dupes if needed.
+   * `Location`. Includes the declaration itself - VS Code de-dupes if needed.
    * Note: this re-reads each file via the open-document cache OR does a
    * fresh scan per call. For workspaces with hundreds of files we'd want to
    * pre-build a reverse index, but for typical robot-cell repos (< 50 files)

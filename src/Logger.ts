@@ -5,8 +5,8 @@ import * as os from 'node:os';
 
 /**
  * Diagnostic logger backed by:
- *   1. A VS Code output channel — live, scrollable in `View → Output → ABB Robot`.
- *   2. A persistent NDJSON log file — one JSON object per line, easy to share
+ *   1. A VS Code output channel - live, scrollable in `View → Output → ABB Robot`.
+ *   2. A persistent NDJSON log file - one JSON object per line, easy to share
  *      and grep. New file per session (timestamped). Old logs auto-pruned at 20.
  *
  * Use info() for ordinary lifecycle events (connect/disconnect/poll cycles),
@@ -36,7 +36,7 @@ class LoggerImpl {
 
   private get fs(): fs.WriteStream {
     if (!this.fileStream) {
-      // Append mode — write each session into a fresh file
+      // Append mode - write each session into a fresh file
       fs.mkdirSync(path.dirname(this.logFilePath), { recursive: true });
       this.fileStream = fs.createWriteStream(this.logFilePath, { flags: 'a' });
       this.fileStream.write(JSON.stringify({
@@ -101,20 +101,20 @@ class LoggerImpl {
 
   error(msg: string, err?: unknown): void {
     const detail = err instanceof Error ? err.message : err !== undefined ? String(err) : '';
-    this.ch.appendLine(`[${this.ts()}] ERROR ${msg}${detail ? ' — ' + detail : ''}`);
+    this.ch.appendLine(`[${this.ts()}] ERROR ${msg}${detail ? ' - ' + detail : ''}`);
     this.writeFile('error', 'app', msg, { err: detail, stack: err instanceof Error ? err.stack : undefined });
   }
 
   trace(category: string, msg: string, data?: unknown): void {
     // HTTP and command traces appear in the file but only category != 'http.*' shows
-    // in the output channel — http traffic spam would drown out other lines.
+    // in the output channel - http traffic spam would drown out other lines.
     if (!category.startsWith('http.')) {
       this.ch.appendLine(`[${this.ts()}] ${category.padEnd(10)} ${msg}`);
     }
     this.writeFile('trace', category, msg, data);
   }
 
-  /** Bring the output panel to front — call this when an error needs attention. */
+  /** Bring the output panel to front - call this when an error needs attention. */
   show(): void { this.ch.show(true); }
 
   /** Open the persistent log file in VS Code (for sharing with support). */

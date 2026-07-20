@@ -1,12 +1,12 @@
 MODULE IOTest
     !========================================================================
-    ! IOTest.mod — I/O signal demo for the RAPID Live extension.
+    ! IOTest.mod - I/O signal demo for the RAPID Live extension.
     !
     ! Pulses digital outputs in patterns. The extension's I/O panel updates
     ! live as values change, so you can see signal toggles in real time.
     !
     ! NOTE: signal names below match OmniCore's IntegratedIONetwork defaults
-    ! (IIO_do0…IIO_do7). On IRC5 you may have DRV1TESTE2 etc. — adjust the
+    ! (IIO_do0…IIO_do7). On IRC5 you may have DRV1TESTE2 etc. - adjust the
     ! signal names if your config differs.
     !========================================================================
 

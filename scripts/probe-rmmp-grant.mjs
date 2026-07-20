@@ -1,8 +1,8 @@
 // Probe: can one RWS session GRANT another session's RMMP request headlessly,
 // i.e. WITHOUT the physical FlexPendant approval?  (RWS 2.0 / OmniCore only)
 //
-// Hypothesis: POST /users/rmmp/grant {uid, privilege} (RWS2_Full_Reference.md:65) —
-// never probed, unimplemented in the client — may let a second authorised session
+// Hypothesis: POST /users/rmmp/grant {uid, privilege} (RWS2_Full_Reference.md:65) -
+// never probed, unimplemented in the client - may let a second authorised session
 // approve the first session's "request remote modify", bootstrapping remote control
 // in AUTO without anyone touching the pendant. This is the single most decisive test
 // for "programmatic vs FlexPendant-only" remote control.
@@ -11,7 +11,7 @@
 //   A = the "requester"  (asks for RMMP modify)
 //   B = the "approver"   (tries to grant A's request)
 // Two different users make it a realistic test (default A=Default User, B=Admin).
-// This probe never commands motion — it only requests/cancels RMMP and attempts a grant.
+// This probe never commands motion - it only requests/cancels RMMP and attempts a grant.
 //
 // Run:  node scripts/probe-rmmp-grant.js
 // Env:  RWS2_URL HOST PORT  A_USER A_PASS  B_USER B_PASS  A_UID (override if auto-resolve fails)
@@ -26,7 +26,7 @@ const B_PASS = process.env.B_PASS || 'robotics';
 async function resolveBase() {
   if (process.env.RWS2_URL) { return new URL(process.env.RWS2_URL); }
   if (process.env.PORT) { return new URL(`https://${HOST}:${process.env.PORT}`); }
-  // A bare TCP check matches unrelated services — issue an actual request.
+  // A bare TCP check matches unrelated services - issue an actual request.
   for (const p of [9403, 5466, 443, 11811]) {
     const probe = makeBaseSession(`https://${HOST}:${p}`, { user: A_USER, pass: A_PASS });
     const t = await probe.req('GET', '/rw/system/robottype');
@@ -66,7 +66,7 @@ async function main() {
   const A = makeUserSession(base, A_USER, A_PASS);
   const B = makeUserSession(base, B_USER, B_PASS);
 
-  console.log(`\n=== RMMP headless-grant probe — ${base.host} ===`);
+  console.log(`\n=== RMMP headless-grant probe - ${base.host} ===`);
   console.log(`  A (requester) = ${A_USER}`);
   console.log(`  B (approver)  = ${B_USER}\n`);
 
@@ -82,7 +82,7 @@ async function main() {
     console.log('  ', clean(us.body).slice(0, 600) || '(empty)');
     aUid = findUid(us.body);
   }
-  console.log('  → A uid =', aUid || '(UNRESOLVED — inspect bodies above, then set A_UID=… and re-run)');
+  console.log('  → A uid =', aUid || '(UNRESOLVED - inspect bodies above, then set A_UID=… and re-run)');
 
   const bLogin = await B.req('GET', '/users/login-info'); await sleep(80);
   console.log('── B login-info ──', 'status', bLogin.status, ' uid=', findUid(bLogin.body) || '?');
@@ -96,7 +96,7 @@ async function main() {
   const aPoll1 = await A.req('GET', '/users/rmmp/poll'); await sleep(80);
   console.log('  A /users/rmmp/poll (pending?) →', aPoll1.status, ' ', spanList(aPoll1.body).slice(0, 6).join('  '));
 
-  // 2. B tries to GRANT A's request — THE KEY TEST
+  // 2. B tries to GRANT A's request - THE KEY TEST
   console.log('\n── B tries to grant A headlessly (THE KEY TEST) ──');
   if (!aUid) { console.log('  ⚠ A uid unresolved; trying grant with privilege only (likely 400).'); }
   const grantBody = (aUid ? `uid=${encodeURIComponent(aUid)}&` : '') + 'privilege=modify';
@@ -114,12 +114,12 @@ async function main() {
   // verdict
   console.log('\n── VERDICT ──');
   const v = bGrant.status >= 200 && bGrant.status < 300
-    ? '✓ controller ACCEPTED the grant — headless approval may be POSSIBLE (confirm A now holds modify above)'
-    : bGrant.status === 403 ? '✗ 403 — granting is itself privilege/UAS-gated (supports FlexPendant-only)'
-    : bGrant.status === 400 ? '? 400 — VC may stub this endpoint, or the uid/param shape is wrong'
-    : bGrant.status === 404 ? '? 404 — endpoint not present on this firmware'
+    ? '✓ controller ACCEPTED the grant - headless approval may be POSSIBLE (confirm A now holds modify above)'
+    : bGrant.status === 403 ? '✗ 403 - granting is itself privilege/UAS-gated (supports FlexPendant-only)'
+    : bGrant.status === 400 ? '? 400 - VC may stub this endpoint, or the uid/param shape is wrong'
+    : bGrant.status === 404 ? '? 404 - endpoint not present on this firmware'
     : `? unexpected status ${bGrant.status}`;
-  console.log('  B grant status', bGrant.status, '—', v);
+  console.log('  B grant status', bGrant.status, '-', v);
 
   // teardown
   console.log('\n── teardown ──');

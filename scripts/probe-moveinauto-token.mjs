@@ -2,7 +2,7 @@
 // WITHOUT the FlexPendant?  (RWS 2.0 / OmniCore only)
 //
 // Hypothesis: the documented-but-never-probed "Move in auto certificate key"
-// (GET /rw/motionsystem/moveinauto/token, RWS2_Full_Reference.md:428 — referenced
+// (GET /rw/motionsystem/moveinauto/token, RWS2_Full_Reference.md:428 - referenced
 // NOWHERE in the client) may be the layer above RMMP+mastership that authorises
 // jogging/positioning while opmode=AUTO. If so, it overturns the project's
 // "AUTO control is FlexPendant-only by design" conclusion.
@@ -11,7 +11,7 @@
 // does it return, and what are the current opmode / mastership / RMMP / enable states.
 // PASS 2 acquires edit+motion mastership + RMMP and re-reads the token.
 // PASS 3 (the actual jog) is GATED behind ATTEMPT_MOTION (default off) and only runs
-// in AUTO. RUN AGAINST A VIRTUAL CONTROLLER — PASS 3 can command simulated motion.
+// in AUTO. RUN AGAINST A VIRTUAL CONTROLLER - PASS 3 can command simulated motion.
 //
 // Run:  node scripts/probe-moveinauto-token.js
 //       ATTEMPT_MOTION=1 node scripts/probe-moveinauto-token.js   (also tries a jog)
@@ -29,7 +29,7 @@ const req = (method, path, body, extraHeaders) =>
 async function resolveBase() {
   if (process.env.RWS2_URL) { return new URL(process.env.RWS2_URL); }
   if (process.env.PORT) { return new URL(`https://${HOST}:${process.env.PORT}`); }
-  // Verify a real RWS 2.0 (HTTPS) controller answers — a bare TCP check matches
+  // Verify a real RWS 2.0 (HTTPS) controller answers - a bare TCP check matches
   // unrelated services (e.g. Windows HTTP.sys on :80), so issue an actual request.
   for (const p of [9403, 5466, 443, 11811]) {
     const probe = makeSession(`https://${HOST}:${p}`);
@@ -66,7 +66,7 @@ async function main() {
     process.exit(1);
   }
   session = makeSession(base, { user: USER });
-  console.log(`\n=== moveinauto/token probe — ${base.host} as ${USER} ===`);
+  console.log(`\n=== moveinauto/token probe - ${base.host} as ${USER} ===`);
   console.log(`ATTEMPT_MOTION=${ATTEMPT_MOTION}\n`);
 
   // ── PASS 1: reconnaissance (read-only) ──────────────────────────────────────
@@ -88,7 +88,7 @@ async function main() {
   }
 
   // ── THE KEY ENDPOINT (read-only, no mastership yet) ─────────────────────────
-  console.log('\n── moveinauto/token — does it exist? (no mastership held) ──');
+  console.log('\n── moveinauto/token - does it exist? (no mastership held) ──');
   const tok1 = await req('GET', '/rw/motionsystem/moveinauto/token'); await sleep(80);
   console.log(`  GET /rw/motionsystem/moveinauto/token → ${tok1.status}`);
   console.log('  body:', clean(tok1.body).slice(0, 500) || '(empty)');
@@ -113,7 +113,7 @@ async function main() {
   if (tok2.status >= 200 && tok2.status < 300) {
     token = getSpan(tok2.body, 'token') || getSpan(tok2.body, 'certificate') || getSpan(tok2.body, 'key')
       || (clean(tok2.body).match(/[A-Za-z0-9+/=_-]{16,}/) || [])[0] || null;
-    console.log('  → token candidate:', token ? token.slice(0, 60) + '…' : '(could not parse — inspect body above)');
+    console.log('  → token candidate:', token ? token.slice(0, 60) + '…' : '(could not parse - inspect body above)');
   }
 
   // ── PASS 3: motion authorisation test (GATED, AUTO only) ────────────────────
@@ -122,7 +122,7 @@ async function main() {
   } else if (opmode !== 'AUTO') {
     console.log(`\n── PASS 3 skipped: opmode is ${opmode}, not AUTO (the whole point is AUTO). Switch the VC to AUTO and re-run. ──`);
   } else {
-    console.log('\n── PASS 3: minimal jog in AUTO — reading the AUTHORISATION verdict (VC simulated motion) ──');
+    console.log('\n── PASS 3: minimal jog in AUTO - reading the AUTHORISATION verdict (VC simulated motion) ──');
     const cc = (Date.now() % 90000) + 1000;
     const jogBody = `jogmode=Joint&mechunit=ROB_1&axis1=1&axis2=0&axis3=0&axis4=0&axis5=0&axis6=0&cjogspeed=5&ccount=${cc}`;
     const j1 = await req('POST', '/rw/motionsystem/jog', jogBody); await sleep(120);

@@ -87,7 +87,7 @@ async function main() {
     }
     const types = extractListItems(typesRes.body, /cfg-dt-li/);
     const interestingTypes = types.filter(t => KEYWORDS.test(t));
-    console.log(`${domain} has ${types.length} types — interesting: ${interestingTypes.length ? interestingTypes.join(', ') : '(none in name)'}`);
+    console.log(`${domain} has ${types.length} types - interesting: ${interestingTypes.length ? interestingTypes.join(', ') : '(none in name)'}`);
 
     // Walk only the keyword-matching types fully (faster), but also sample
     // a couple non-matching types in case the setting is buried in a
@@ -105,7 +105,7 @@ async function main() {
         continue;
       }
       const instances = extractListItems(instRes.body, /cfg-dt-instance-li/);
-      console.log(`  ${domain}/${type} — ${instances.length} instance(s)`);
+      console.log(`  ${domain}/${type} - ${instances.length} instance(s)`);
 
       for (const inst of instances) {
         const aRes = await req('GET', port, `/rw/cfg/${encodeURIComponent(domain)}/${encodeURIComponent(type)}/${encodeURIComponent(inst)}`);

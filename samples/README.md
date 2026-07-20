@@ -4,21 +4,21 @@ These are ready-to-upload .mod files for testing the extension's "Upload Module"
 
 | File | Purpose | Robot motion? |
 |---|---|---|
-| `TestExtension.mod` | Variables (VAR / PERS / CONST), TP messages, error handling, basic flow control. No motion. Smallest module — good first test. | No |
+| `TestExtension.mod` | Variables (VAR / PERS / CONST), TP messages, error handling, basic flow control. No motion. Smallest module - good first test. | No |
 | `MotionTest.mod` | MoveJ + MoveL through a square, zig-zag wave, pick-and-place, joint-axis sweep. **You'll see the robot move in RobotStudio's 3D view.** | **Yes** |
 | `IOTest.mod` | Pulses digital outputs in patterns (single pulse + chase). The I/O panel updates live as signals toggle. | No |
 
 ## Recommended test sequence
 
-1. **Connect** to a VC (OmniCore preferred — it has `Module1` removable; IRC5 too)
+1. **Connect** to a VC (OmniCore preferred - it has `Module1` removable; IRC5 too)
 2. **Upload Module** → `MotionTest.mod` (replaces same-named module if it exists)
 3. **Status panel → Motors On** (motors must be running for motion)
 4. **PP to Main** → sets program pointer to `main` of the loaded module
 5. **Start RAPID** → robot moves through the square, zig-zag, etc.
-6. **Watch the Motion panel** — joint values + cartesian update live (~1s)
-7. **Watch the 3D view in RobotStudio** — robot follows the trajectory
+6. **Watch the Motion panel** - joint values + cartesian update live (~1s)
+7. **Watch the 3D view in RobotStudio** - robot follows the trajectory
 
-## "Set PP to routine" — running specific procs
+## "Set PP to routine" - running specific procs
 
 You can also run individual procedures (not just `main`):
 

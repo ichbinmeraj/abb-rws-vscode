@@ -8,14 +8,14 @@ import { Logger } from './Logger';
  *
  * Sources of suggestions:
  *   - 705 entries from the ABB Technical Reference Manual
- *     (instructions, functions, data types, structural keywords) — all surfaced.
+ *     (instructions, functions, data types, structural keywords) - all surfaced.
  *   - A curated map of "snippet templates" for common instructions and
  *     control-flow constructs. Where a template exists, accepting the
  *     completion expands into a tab-stop snippet (placeholders the user
  *     tabs through). Where no template exists, the completion just inserts
  *     the bare name.
  *
- * Trigger characters: none — VS Code calls us on every word as the user types.
+ * Trigger characters: none - VS Code calls us on every word as the user types.
  * Filtering: handled by VS Code based on `label` and `filterText`.
  */
 
@@ -35,7 +35,7 @@ function loadDb(extensionRoot: string): Record<string, RapidEntry> {
   const p = path.join(extensionRoot, 'resources', 'rapid-language-data.json');
   try {
     DB = JSON.parse(fs.readFileSync(p, 'utf-8')) as Record<string, RapidEntry>;
-    Logger.info(`RAPID completion DB loaded — ${Object.keys(DB).length} entries`);
+    Logger.info(`RAPID completion DB loaded - ${Object.keys(DB).length} entries`);
   } catch (e) {
     Logger.error(`failed to load RAPID DB at ${p}`, e);
     DB = {};
@@ -45,7 +45,7 @@ function loadDb(extensionRoot: string): Record<string, RapidEntry> {
 
 /**
  * Snippet templates (TextMate $1/$2/$0 syntax) for the most-used items.
- * Indexed by lowercase name. Hand-curated — covers control flow and the
+ * Indexed by lowercase name. Hand-curated - covers control flow and the
  * core motion primitives where filling argument placeholders saves real
  * typing. For everything else, completion inserts the bare name.
  */
@@ -134,11 +134,11 @@ export class RapidCompletionProvider implements vscode.CompletionItemProvider {
 
   private toCompletion(e: RapidEntry): vscode.CompletionItem {
     const item = new vscode.CompletionItem(e.name, this.kindFor(e.kind));
-    item.detail = `${this.kindLabel(e.kind)} — ${e.brief}`;
+    item.detail = `${this.kindLabel(e.kind)} - ${e.brief}`;
 
     // Hover-style documentation
     const md = new vscode.MarkdownString();
-    md.appendMarkdown(`**${e.name}** — _${this.kindLabel(e.kind)}_\n\n${e.brief}\n\n`);
+    md.appendMarkdown(`**${e.name}** - _${this.kindLabel(e.kind)}_\n\n${e.brief}\n\n`);
     if (e.syntax) {
       md.appendCodeblock(e.syntax.split('\n').slice(0, 4).join('\n'), 'rapid');
     }

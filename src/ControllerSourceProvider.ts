@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { MultiRobotManager } from 'abb-rws-client';
 
 /**
- * Content provider for the `abb-controller:` URI scheme — virtual, read-only
+ * Content provider for the `abb-controller:` URI scheme - virtual, read-only
  * documents that contain the live RAPID source of a module on the connected
  * controller.
  *
@@ -12,7 +12,7 @@ import type { MultiRobotManager } from 'abb-rws-client';
  * Why a custom scheme:
  *  - The previous approach used `untitled:IOTest.controller.mod` which VS Code
  *    treated as a real .mod file, so the right-click "Diff with controller"
- *    fired again and tried to fetch a module called `IOTest.controller` —
+ *    fired again and tried to fetch a module called `IOTest.controller` -
  *    resulting in HTTP 400 from the controller.
  *  - A custom scheme is read-only by design (no save/edit), so users can't
  *    accidentally edit "the controller's view" thinking it's the local copy.
@@ -47,7 +47,7 @@ export class ControllerSourceProvider implements vscode.TextDocumentContentProvi
     let moduleName = fileName.replace(/\.(mod|sys|prg)$/i, '');
     // Defensive: strip `.controller` / `.from-controller` suffix if some
     // earlier code path slipped one in. Real RAPID module names never
-    // contain a dot — the controller would 400 on `MotionTest.controller`.
+    // contain a dot - the controller would 400 on `MotionTest.controller`.
     moduleName = moduleName.replace(/\.(controller|from-controller)$/i, '');
 
     try {

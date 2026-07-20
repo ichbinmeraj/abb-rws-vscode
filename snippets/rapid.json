@@ -86,21 +86,21 @@
     "body": [
       "MoveJ ${1:p10}, ${2:v1000}, ${3:z10}, ${4:tool0}\\WObj:=${5:wobj0};"
     ],
-    "description": "MoveJ — joint-interpolated move"
+    "description": "MoveJ - joint-interpolated move"
   },
   "MoveL": {
     "prefix": "movel",
     "body": [
       "MoveL ${1:p10}, ${2:v1000}, ${3:z10}, ${4:tool0}\\WObj:=${5:wobj0};"
     ],
-    "description": "MoveL — linear move"
+    "description": "MoveL - linear move"
   },
   "MoveAbsJ": {
     "prefix": "moveabsj",
     "body": [
       "MoveAbsJ ${1:jt0}\\NoEOffs, ${2:v1000}, ${3:fine}, ${4:tool0};"
     ],
-    "description": "MoveAbsJ — absolute joint move"
+    "description": "MoveAbsJ - absolute joint move"
   },
   "robtarget declaration": {
     "prefix": "robtarget",

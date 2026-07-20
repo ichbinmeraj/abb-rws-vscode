@@ -1,4 +1,4 @@
-/* RWS endpoint coverage test — runs against live VCs, reuses one session.
+/* RWS endpoint coverage test - runs against live VCs, reuses one session.
  * Usage: node test-coverage.js
  * Env: RWS2_URL RWS1_URL RWS_USER RWS_PASS HOST (see scripts/lib/probe-common.mjs)
  * Without RWS2_URL/RWS1_URL it auto-discovers a controller (5466/9403/443/etc.)
@@ -64,7 +64,7 @@ async function test(label, fn) {
   await test('W1 /rw/system/robottype',         () => req('GET', PORT, '/rw/system/robottype'));
   await test('W1 /rw/system/energy',            () => req('GET', PORT, '/rw/system/energy'));
   await test('W1 /rw/system/options',           () => req('GET', PORT, '/rw/system/options'));
-  // retcode without filter (lists all known codes — works without a specific code)
+  // retcode without filter (lists all known codes - works without a specific code)
   await test('W1 /rw/retcode (list)',            () => req('GET', PORT, '/rw/retcode'));
   await test('W1 /ctrl/options',                () => req('GET', PORT, '/ctrl/options'));
   await test('W1 /ctrl/features',               () => req('GET', PORT, '/ctrl/features'));

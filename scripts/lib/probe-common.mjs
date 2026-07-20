@@ -1,15 +1,15 @@
 // Shared config + HTTP session helpers for the live test/probe scripts.
 //
 // Every script honors these environment variables:
-//   RWS1_URL   — IRC5 / RWS 1.0 base URL, e.g. http://127.0.0.1:23308
+//   RWS1_URL   - IRC5 / RWS 1.0 base URL, e.g. http://127.0.0.1:23308
 //                (empty → the RWS 1.0 scripts fall back to port auto-detection)
-//   RWS2_URL   — OmniCore / RWS 2.0 base URL (default https://127.0.0.1:5466)
-//   RWS_USER   — login user  (default "Default User")
-//   RWS_PASS   — password    (default "robotics")
-//   HOST       — host used for defaults and port scans (default 127.0.0.1)
+//   RWS2_URL   - OmniCore / RWS 2.0 base URL (default https://127.0.0.1:5466)
+//   RWS_USER   - login user  (default "Default User")
+//   RWS_PASS   - password    (default "robotics")
+//   HOST       - host used for defaults and port scans (default 127.0.0.1)
 //
 // makeSession() gives a Basic-auth session with a shared cookie jar per
-// controller — RWS 2.0 counts sessions per IP (5 max), so reuse one session
+// controller - RWS 2.0 counts sessions per IP (5 max), so reuse one session
 // per script and GET /logout when done (session.logout()).
 
 import https from 'node:https';
@@ -42,7 +42,7 @@ export function tcpPing(port, host = HOST, timeoutMs = 300) {
 /**
  * Basic-auth HTTP(S) session with a cookie jar.
  *
- * @param baseUrl  string | URL — e.g. 'https://127.0.0.1:5466'
+ * @param baseUrl  string | URL - e.g. 'https://127.0.0.1:5466'
  * @param opts     { user, pass, accept, contentType, timeoutMs }
  * @returns        { url, req, logout, cookie }
  *
@@ -52,7 +52,7 @@ export function tcpPing(port, host = HOST, timeoutMs = 300) {
  *   - extra: { contentType, headers } per-request overrides (e.g. file upload
  *     with 'text/plain;v=2.0').
  *   - resolves { status, body, headers }; on transport errors resolves
- *     { status: 0, body: <message>, error: <message> } — never rejects.
+ *     { status: 0, body: <message>, error: <message> } - never rejects.
  */
 export function makeSession(baseUrl, opts = {}) {
   const url = baseUrl instanceof URL ? baseUrl : new URL(baseUrl);

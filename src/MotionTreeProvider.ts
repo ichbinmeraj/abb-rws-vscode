@@ -10,7 +10,7 @@ class Item extends vscode.TreeItem {
   }
 }
 
-/** Clickable action — fires a VS Code command when the user activates the row. */
+/** Clickable action - fires a VS Code command when the user activates the row. */
 class ActionItem extends vscode.TreeItem {
   constructor(label: string, description: string, icon: string, command: string, tooltip: string, args: unknown[] = []) {
     super(label, vscode.TreeItemCollapsibleState.None);
@@ -35,11 +35,11 @@ export class MotionTreeProvider implements vscode.TreeDataProvider<vscode.TreeIt
     if (!connected) return [];
 
     const deg = (n: number | null | undefined) =>
-      n != null ? `${n.toFixed(3)}°` : '—';
+      n != null ? `${n.toFixed(3)}°` : '-';
     const mm = (n: number | null | undefined) =>
-      n != null ? `${n.toFixed(2)} mm` : '—';
+      n != null ? `${n.toFixed(2)} mm` : '-';
     const q = (n: number | null | undefined) =>
-      n != null ? n.toFixed(6) : '—';
+      n != null ? n.toFixed(6) : '-';
 
     const items: vscode.TreeItem[] = [];
 
@@ -97,7 +97,7 @@ export class MotionTreeProvider implements vscode.TreeDataProvider<vscode.TreeIt
     const ctrl   = this.manager.state.ctrlstate;
     const jogReady = opmode !== 'AUTO' && ctrl === 'motoron';
     const jogStatus = !jogReady
-      ? (opmode === 'AUTO' ? '⚠ AUTO mode — switch to MANR' : '⚠ motors off')
+      ? (opmode === 'AUTO' ? '⚠ AUTO mode - switch to MANR' : '⚠ motors off')
       : `${mode} · ${inc}${mode === 'Joint' ? '°' : ' mm'} · speed ${speed}%`;
 
     items.push(new Item('Jog Robot', jogStatus, 'arrow-swap', `Jog ready: ${jogReady}`));
@@ -146,7 +146,7 @@ export class MotionTreeProvider implements vscode.TreeDataProvider<vscode.TreeIt
     items.push(new Item('Actions', '', 'tools'));
     items.push(new ActionItem(
       'Calculate Inverse Kinematics…',
-      'X,Y,Z,Q → J1–J6',
+      'X,Y,Z,Q → J1-J6',
       'symbol-numeric',
       'abbRobot.calcIK',
       'Compute joint angles for a target Cartesian pose. Pre-fills with current TCP position.',

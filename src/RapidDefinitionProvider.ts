@@ -5,7 +5,7 @@ import type { RapidLanguageIndex } from './RapidLanguageIndex';
  * Go-to-Definition for RAPID. Ctrl+click on a routine / variable / trap name
  * jumps to its declaration (PROC, FUNC, TRAP, VAR, PERS, CONST, MODULE).
  *
- * Static-only (no language docs DB lookup) — that's the hover provider's job.
+ * Static-only (no language docs DB lookup) - that's the hover provider's job.
  * Here we only resolve user-defined symbols so the IDE feels native:
  *   - Routine call `testWave;` → jumps to `PROC testWave()`
  *   - Variable read `counter := counter + 1` → jumps to `VAR num counter := …`
@@ -23,7 +23,7 @@ export class RapidDefinitionProvider implements vscode.DefinitionProvider {
     if (!range) { return null; }
     const word = document.getText(range);
 
-    // Don't trigger on RAPID keywords / built-ins — those are documented in
+    // Don't trigger on RAPID keywords / built-ins - those are documented in
     // the hover provider, not navigable to a user file.
     if (RAPID_KEYWORDS.has(word.toLowerCase())) { return null; }
 

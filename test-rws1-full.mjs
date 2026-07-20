@@ -1,5 +1,5 @@
-// Comprehensive RWS 1.0 verification — every endpoint, with pass/fail report.
-// Auto-detects the IRC5 VC port. Read-only — no state changes.
+// Comprehensive RWS 1.0 verification - every endpoint, with pass/fail report.
+// Auto-detects the IRC5 VC port. Read-only - no state changes.
 //
 // Run:  node test-rws1-full.js
 // Or with a specific controller:  RWS1_URL=http://127.0.0.1:23308 node test-rws1-full.js
@@ -27,7 +27,7 @@ async function findIRC5() {
       if (c) return { port: p, client: c };
     }
   }
-  // Wide scan — RobotStudio sometimes assigns ports >30000 (seen 50718 live).
+  // Wide scan - RobotStudio sometimes assigns ports >30000 (seen 50718 live).
   console.log("  (wide-scanning 1024-65535…)");
   for (let p = 1024; p <= 65535; p++) {
     if (await tcpPing(p, HOST, 80)) {
@@ -202,7 +202,7 @@ if (failed.length === 0) {
 
 console.log("\nFailed:");
 for (const f of failed) {
-  console.log(`  ✗ ${f.label}` + (f.hint ? ` — ${f.hint}` : ""));
+  console.log(`  ✗ ${f.label}` + (f.hint ? ` - ${f.hint}` : ""));
 }
 
 console.log("\nNote: 404s on safety zones, breakpoints, network/dns/routes, time zone,");

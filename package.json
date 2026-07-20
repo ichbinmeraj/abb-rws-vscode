@@ -1,6 +1,6 @@
 {
   "name": "abb-rws",
-  "displayName": "RAPID Live — ABB Robotics for VS Code",
+  "displayName": "RAPID Live - ABB Robotics for VS Code",
   "version": "1.0.0",
   "description": "The only VS Code extension that connects to live ABB IRC5 (RobotWare 6) and OmniCore (RobotWare 7) controllers. Live-tested on RW7.21 + RW6.16. RAPID language server (hover docs, autocomplete, signature help, go-to-definition, inlay hints with live values, CodeLens), git-style push/pull/diff workflow for .mod files, multi-robot management, real-time WebSocket subscriptions, IK + FK, file/IO/event-log access, variable watch panel, dual RWS 1.0 + 2.0 protocol support.",
   "publisher": "merajsafari",
@@ -111,7 +111,7 @@
               },
               "password": {
                 "type": "string",
-                "description": "Deprecated here — passwords are stored in VS Code secure storage. Any password found in this setting is migrated to secure storage on activation and removed from settings. The field remains only for backward compatibility."
+                "description": "Deprecated here - passwords are stored in VS Code secure storage. Any password found in this setting is migrated to secure storage on activation and removed from settings. The field remains only for backward compatibility."
               }
             },
             "required": [
@@ -125,7 +125,7 @@
         "abbRobot.host": {
           "type": "string",
           "default": "192.168.125.1",
-          "description": "(Legacy) Single-robot host — use abbRobot.robots for multi-robot"
+          "description": "(Legacy) Single-robot host - use abbRobot.robots for multi-robot"
         },
         "abbRobot.username": {
           "type": "string",
@@ -152,7 +152,7 @@
           "type": "number",
           "default": 1,
           "minimum": 0,
-          "description": "Jog distance per click — degrees in Joint mode, mm in Cartesian mode"
+          "description": "Jog distance per click - degrees in Joint mode, mm in Cartesian mode"
         },
         "abbRobot.jog.speed": {
           "type": "number",
@@ -866,7 +866,7 @@
           {
             "id": "add",
             "title": "Add a robot",
-            "description": "Click the **+ Add Robot** button in the **Robots** panel (left activity bar — robot icon). The wizard auto-detects RobotStudio virtual controllers on localhost; or enter your real controller's IP and credentials.\n\n[Open the Robots panel](command:workbench.view.extension.abbRobot)",
+            "description": "Click the **+ Add Robot** button in the **Robots** panel (left activity bar - robot icon). The wizard auto-detects RobotStudio virtual controllers on localhost; or enter your real controller's IP and credentials.\n\n[Open the Robots panel](command:workbench.view.extension.abbRobot)",
             "completionEvents": [
               "onCommand:abbRobot.addRobot"
             ],
@@ -888,7 +888,7 @@
           {
             "id": "open",
             "title": "Open a loaded module",
-            "description": "In the **Modules** panel, find a program module (`MotionTest`, `user`, etc.) and click the **Open in Editor** icon. The live RAPID source from the controller opens in a new editor tab — fully syntax-highlighted, with hover docs from the official manual.",
+            "description": "In the **Modules** panel, find a program module (`MotionTest`, `user`, etc.) and click the **Open in Editor** icon. The live RAPID source from the controller opens in a new editor tab - fully syntax-highlighted, with hover docs from the official manual.",
             "completionEvents": [
               "onCommand:abbRobot.openModuleSource"
             ],

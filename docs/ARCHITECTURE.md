@@ -1,6 +1,6 @@
-# abb-rws-vscode — Architecture
+# abb-rws-vscode - Architecture
 
-> "RAPID Live — ABB Robotics for VS Code" (`package.json` id `merajsafari.abb-rws`,
+> "RAPID Live - ABB Robotics for VS Code" (`package.json` id `merajsafari.abb-rws`,
 > displayName `RAPID Live`, **v0.9.2**). A GUI + RAPID language server over the
 > `abb-rws-client` library, connecting to live IRC5 (RWS 1.0) and OmniCore (RWS 2.0)
 > controllers. Bundled with esbuild into a single `dist/extension.js`.
@@ -15,7 +15,7 @@ directly verified.
 
 The extension is a thin-ish GUI layer plus a from-scratch RAPID language server. All
 controller access flows through **one** `MultiRobotManager` (from `abb-rws-client`); the
-extension itself does **no** polling — the client library polls and the extension reacts
+extension itself does **no** polling - the client library polls and the extension reacts
 to `multi.onDidChange`.
 
 ```
@@ -39,14 +39,14 @@ Key seam: providers that only render state get `multi` typed as `any` (the
 **multi-as-any seam**, `extension.ts:371-379`); providers that call *methods* must go
 through `multi.active` (a `RobotManager`), because `MultiRobotManager` proxies `state`
 and `listDirectory` but not the ~120 other methods. Calling a manager method directly on
-`multi` compiles (it's `any`) but throws at runtime — a bug that has bitten this codebase
+`multi` compiles (it's `any`) but throws at runtime - a bug that has bitten this codebase
 before (`ModulesTreeProvider.ts:107-111`, `CHANGELOG.md:176`).
 
 ---
 
 ## 2. The `contributes` block
 
-### Views — 5 panels in one activity-bar container (`abbRobot`)
+### Views - 5 panels in one activity-bar container (`abbRobot`)
 
 | View id | Kind | Backed by | Notes |
 |---|---|---|---|
@@ -59,7 +59,7 @@ before (`ModulesTreeProvider.ts:107-111`, `CHANGELOG.md:176`).
 Wiring is `extension.ts:385-431`. `viewsWelcome` provides empty-state content for all 5,
 gated on the `abbRobot.connected` context key (`package.json:780-805`).
 
-### Commands — 97 in the manifest (`package.json:163-743`)
+### Commands - 97 in the manifest (`package.json:163-743`)
 
 All prefixed `abbRobot.`, category "ABB Robot". Grouped: robot management (add/remove/
 connect/disconnect/setActive/configure), RAPID execution (start/stop/resetRapid/ppToMain/
@@ -74,7 +74,7 @@ the palette (no `commandPalette` menu gating).
 
 ### Configuration (`package.json:79-161`)
 
-`abbRobot.robots` (array of `{id,name,host,username,password}` — **passwords in plaintext
+`abbRobot.robots` (array of `{id,name,host,username,password}` - **passwords in plaintext
 settings, no SecretStorage**), legacy single-robot `abbRobot.host/username/password`,
 `abbRobot.refreshInterval` (default 1000 ms, min 200), and `abbRobot.jog.increment/speed/
 mode`.
@@ -95,26 +95,26 @@ walkthrough `rapidLiveQuickStart` (add → connect → open → push → watch).
 
 ### Activation
 
-`activationEvents: []` — VS Code ≥1.74 auto-generates activation from contributed
+`activationEvents: []` - VS Code ≥1.74 auto-generates activation from contributed
 commands/views. There is **no** `onLanguage:rapid` event, so language features may not
-activate on merely opening a `.mod` file until a command/view is used **(open question —
+activate on merely opening a `.mod` file until a command/view is used **(open question -
 see §8)**.
 
 ---
 
 ## 3. Activation lifecycle (`extension.ts:350-549`)
 
-1. `setLogger(Logger)` — routes all `abb-rws-client` logging (including HTTP wire traces)
+1. `setLogger(Logger)` - routes all `abb-rws-client` logging (including HTTP wire traces)
    into the extension's `Logger` (`extension.ts:353-360`).
-2. `MultiRobotManager.fromConfigs(loadConfigs(cfg))` — built from `abbRobot.robots`;
+2. `MultiRobotManager.fromConfigs(loadConfigs(cfg))` - built from `abbRobot.robots`;
    `loadConfigs` (L309-324) migrates legacy single-robot settings into an id-`default`
    config. Stored in module-level `globalMulti`.
-3. `multi.onError(...)` — surfaces the client's "3 failed polls → auto-disconnect" as VS
+3. `multi.onError(...)` - surfaces the client's "3 failed polls → auto-disconnect" as VS
    Code dialogs (L366-368).
 4. Provider construction (L371-383). Seven providers receive `const m = multi as any`
    (status/motion/rapid/modules/elog/files/io); the rest get typed `multi`.
 5. View + language-feature + status-bar registration (L385-498).
-6. `void rapidIndex.start()` — fire-and-forget workspace `.mod` scan (L470-472).
+6. `void rapidIndex.start()` - fire-and-forget workspace `.mod` scan (L470-472).
 7. `multi.onDidChange` master handler refreshes all 9 providers + status bar + the
    `abbRobot.connected` context key (L501-549).
 8. One giant `context.subscriptions.push(...)` of every command (L587-2383).
@@ -126,7 +126,7 @@ see §8)**.
 ## 4. Module map
 
 ### Entry point
-- **`extension.ts`** (2,723) — everything in §3, all command handlers, and the shared
+- **`extension.ts`** (2,723) - everything in §3, all command handlers, and the shared
   helpers: `friendlyErrorMessage` (ABB-error-code knowledge base, L2393-2472), `showError`
   (mastership/RMMP recovery dialogs, L2474-2574), `tracedCommand` wrapper (L560-585),
   `tryResolveMainCollision` (two-main `-519` auto-recovery, L2655-2705), `openAsScratchFile`
@@ -144,25 +144,25 @@ see §8)**.
 | `FileExplorerProvider` | `$HOME` file tree | `multi as any` | **`listDirectory` directly on the injected manager** (L63) |
 | `CfgTreeProvider` | CFG domain→type→instance | typed `multi`, via `.active` | `listCfg*` on `.active` |
 | `VariableWatchProvider` | watch list + polling | typed `multi`, via `.active` | `getRapidVariable`/`setRapidVariable` on `.active` |
-| `ModulesTreeProvider` | tasks→modules→routines | `multi as any`, via `.active` | **dead — constructed, never registered (§7)** |
-| `CompositeTreeProvider` | merges N providers under headers | — | delegates to children |
+| `ModulesTreeProvider` | tasks→modules→routines | `multi as any`, via `.active` | **dead - constructed, never registered (§7)** |
+| `CompositeTreeProvider` | merges N providers under headers | - | delegates to children |
 
 ### Webviews & decorations
-- `TabbedProgramWebviewProvider` (1,118) — the Program panel. Tabs Modules + Watch; inline
+- `TabbedProgramWebviewProvider` (1,118) - the Program panel. Tabs Modules + Watch; inline
   HTML string with CSP; message protocol `{type:'command',name,args}` →
   `executeCommand`, `{type:'expandModule'}` → routine fetch. Per-`${task}:${module}`
   routine cache; proactive two-main `-519` collision banner. Only the **active** task
   shows modules (`L192-198`).
-- `LiveCellWebviewProvider` (344) — read-only dashboard; posts state on `onDidChange`,
-  never posts back. (Header mockup advertises tool/wobj that isn't rendered — dead
+- `LiveCellWebviewProvider` (344) - read-only dashboard; posts state on `onDidChange`,
+  never posts back. (Header mockup advertises tool/wobj that isn't rendered - dead
   `active` var, L88-90.)
-- `ControllerSourceProvider` (61) — `TextDocumentContentProvider` for the read-only
+- `ControllerSourceProvider` (61) - `TextDocumentContentProvider` for the read-only
   `abb-controller:` URI scheme; `uriFor(task,module,ext)` builds the virtual URI so
   Diff-with-Controller has a stable read-only target.
-- `PpDecoration` (98) — live program-pointer gutter arrow + line highlight; matches the
+- `PpDecoration` (98) - live program-pointer gutter arrow + line highlight; matches the
   editor's first `MODULE <name>` to `pp.module`; **issues a `getCurrentPP` HTTP call on
   every `onDidChange` and every editor focus change** (L44-58).
-- `Logger` (144) — dual sink: VS Code output channel "ABB Robot" + per-session NDJSON at
+- `Logger` (144) - dual sink: VS Code output channel "ABB Robot" + per-session NDJSON at
   `~/.abb-rws-extension/logs/` (pruned to newest 20); HTTP-category traces go to the file
   only, not the visible channel (L109-113).
 
@@ -200,7 +200,7 @@ Logs" / "Edit Robot…".
 ### 5.2 Push a RAPID file (`abbRobot.pushCurrentFile`, `extension.ts:1568-1603`)
 Arg `Uri` from explorer, or the active editor (save dirty doc first) → only `.mod/.sys/
 .prg` → strip any legacy `.controller`/`.from-controller` basename suffix (**module names
-can't contain dots — the controller 400s**, L1630-1633) → `active.loadProgram(...)` which
+can't contain dots - the controller 400s**, L1630-1633) → `active.loadProgram(...)` which
 (in the client) stops RAPID, unloads the same-named module, uploads to `$HOME`, and
 `loadModule(replace=true)`.
 
@@ -225,7 +225,7 @@ rapid/edit/motion/pp paths) get a 3-button dialog: **Request Remote Control** (c
 - **No polling in the extension.** The client polls; the extension refreshes on
   `multi.onDidChange` (one subscriber fanning to 9 providers + status bar + context key,
   `extension.ts:501-549`). Manual `refresh*` commands are escape hatches.
-- **All method calls go through `multi.active`, never `multi`** — see the seam in §1.
+- **All method calls go through `multi.active`, never `multi`** - see the seam in §1.
 - **Command-argument polymorphism.** Nearly every context-menu command accepts a string,
   a `TreeItem` with `.id/.label`, or a `{node}`/`{entry}` wrapper, because VS Code passes
   different shapes for inline buttons vs item-clicks vs the palette (`extractRobotId`
@@ -235,7 +235,7 @@ rapid/edit/motion/pp paths) get a 3-button dialog: **Request Remote Control** (c
   workspace root or `~/.abb-rws-extension/scratch/` (not an untitled doc) so Push/Diff/
   language features work; the read-only `abb-controller:` scheme is reserved for diff
   targets (`ControllerSourceProvider.ts:10-21`).
-- **`contextValue` flows through `CompositeTreeProvider` unchanged** — menu contributions
+- **`contextValue` flows through `CompositeTreeProvider` unchanged** - menu contributions
   target the composite view id but match on the child's `contextValue`
   (`CompositeTreeProvider.ts:17-20`, `CHANGELOG.md:63-65`).
 - **RAPID everything is case-insensitive** (DB keyed lowercase, index lookups
@@ -251,7 +251,7 @@ rapid/edit/motion/pp paths) get a 3-button dialog: **Request Remote Control** (c
 
 - **The multi-as-any seam** (`extension.ts:371-372`): 7 providers get an untyped `multi`.
   Safe for the 5 that only read `manager.state` (MultiRobotManager proxies state), but
-  `FileExplorerProvider` calls `listDirectory` directly on it — the exact class of bug
+  `FileExplorerProvider` calls `listDirectory` directly on it - the exact class of bug
   `ModulesTreeProvider.ts:107-111` documents. It works today only because
   `MultiRobotManager` happens to expose `listDirectory` (`MultiRobotManager.ts:71-75`).
 - **Two-main `-519` collision**: two loaded modules each defining `PROC main()` puts the
@@ -268,7 +268,7 @@ rapid/edit/motion/pp paths) get a 3-button dialog: **Request Remote Control** (c
 - **Dynamically loaded modules don't enter the runtime symbol table** until a `.pgf` build
   or restart on RW6.16 (`test-rws1-writes.mjs:323-327`); `org_code 3500` = "Routine main
   not found" when no program is built.
-- **`writeSignal` needs RMMP=modify even in AUTO** on the VC (403 "Rejected" otherwise) —
+- **`writeSignal` needs RMMP=modify even in AUTO** on the VC (403 "Rejected" otherwise) -
   documented identically in both write-test scripts (`test-rws1-writes.mjs:453`,
   `test-rws2-writes.mjs:553`).
 - **Signature-help highlights the wrong parameter**: `parse-rapid-manual.mjs` stores
@@ -279,10 +279,10 @@ rapid/edit/motion/pp paths) get a 3-button dialog: **Request Remote Control** (c
   `3HAC050917-001 Revision: F` and mojibake copyright text that surface in hover code
   blocks.
 - **Watch list is `globalState`, not workspace state** despite the comment
-  (`VariableWatchProvider.ts:19` vs `:52`) — watches are global across workspaces.
-- **The `npm run watch` script is a no-op** — `build.js` ignores `--watch` (there is no
+  (`VariableWatchProvider.ts:19` vs `:52`) - watches are global across workspaces.
+- **The `npm run watch` script is a no-op** - `build.js` ignores `--watch` (there is no
   esbuild `context()`/`watch()` call). The only rebuild path is the F5 `preLaunchTask`.
-- **No type checking in the build** — esbuild doesn't typecheck and nothing runs `tsc`, so
+- **No type checking in the build** - esbuild doesn't typecheck and nothing runs `tsc`, so
   type errors ship silently (`build.js`, `tsconfig.json` has no `noEmit`).
 
 ---
@@ -290,10 +290,10 @@ rapid/edit/motion/pp paths) get a 3-button dialog: **Request Remote Control** (c
 ## 8. Build, test, release
 
 ```bash
-npm run build     # node build.js — esbuild bundles src/extension.ts + inlined
+npm run build     # node build.js - esbuild bundles src/extension.ts + inlined
                   #   abb-rws-client → dist/extension.js (CJS, external:['vscode'],
                   #   minify:false, sourcemap). ~552 KB.
-npm run watch     # BROKEN — one-shot build, does not watch
+npm run watch     # BROKEN - one-shot build, does not watch
 npm run package   # npx vsce package → .vsix
 # F5 in VS Code   # Extension Development Host (preLaunchTask 'npm: build')
 ```
@@ -311,8 +311,8 @@ live-test scripts run manually against the two VCs:
 | `test-rws2-writes.mjs` | RWS 2.0 | auto | write verification, `edit`/`motion` mastership |
 | `scripts/probe-*.js` | mostly RWS 2.0 | mostly `:5466` (hard) | one-off protocol reverse-engineering |
 
-The `probe-*.js` scripts encode a research campaign — *can remote control / op-mode change
-/ motion-in-AUTO happen without the FlexPendant?* — and their **interpretation matrices**
+The `probe-*.js` scripts encode a research campaign - *can remote control / op-mode change
+/ motion-in-AUTO happen without the FlexPendant?* - and their **interpretation matrices**
 are in the files, but the **observed results are not** (they live in the project's memory
 notes: the answer is consistently "FlexPendant-only by design"). Both write scripts
 hardcode `D:/abb-rws-vscode/samples/TestExtension.mod`.
@@ -323,9 +323,9 @@ hardcode `D:/abb-rws-vscode/samples/TestExtension.mod`.
 
 | # | Discrepancy | Evidence |
 |---|---|---|
-| 1 | **`ModulesTreeProvider` is dead code** — constructed and refreshed but registered in no view (the Program panel is now `TabbedProgramWebviewProvider`) | `extension.ts:376, 505` vs `:385-431` |
+| 1 | **`ModulesTreeProvider` is dead code** - constructed and refreshed but registered in no view (the Program panel is now `TabbedProgramWebviewProvider`) | `extension.ts:376, 505` vs `:385-431` |
 | 2 | **Dependency version skew**: manifest pins `abb-rws-client-0.5.0.tgz`, `node_modules` has 0.7.1, source is 0.7.2, and `docs/RWS_COVERAGE.md`/`RWS1_PARITY_PLAN.md` attribute the shipped parity to 0.6.0 | `package.json:1164` vs installed vs `docs/*` |
-| 3 | Repo URL is `github.com/ichbinmeraj/abb-rws-vscode` in `package.json:13` (matches the real remote), but the client's `package.json` points at `merajsafari` — inconsistent org between the two repos | git remotes |
+| 3 | Repo URL is `github.com/ichbinmeraj/abb-rws-vscode` in `package.json:13` (matches the real remote), but the client's `package.json` points at `merajsafari` - inconsistent org between the two repos | git remotes |
 | 4 | `abbRobot.resetRapid` and `abbRobot.ppToMain` are two commands with identical title "PP to Main" and icon | `package.json:243-253` |
 | 5 | Category `Debuggers` declared but no debugger contribution exists (DebugAdapter is future work) | `package.json:38-42`, `docs/RWS_COVERAGE.md:236` |
 | 6 | Walkthrough "watch" step completes on `abbRobot.addWatch` but instructs the user to use `abbRobot.addSelectionToWatch` | `package.json:859-864` |
@@ -333,15 +333,15 @@ hardcode `D:/abb-rws-vscode/samples/TestExtension.mod`.
 | 8 | README says "~90 commands" / "The first extension"; manifest has 97 / "The only extension" | `README.md:22,3` vs `package.json` |
 | 9 | README comparison table claims "IK + FK ✓" unqualified, but IK always fails on VCs and FK's param format is listed as a blocker | `README.md:54`, `docs/RWS_COVERAGE.md:92` |
 | 10 | `setActiveTool`/`setActiveWobj` hardcode mechunit `ROB_1`, while `showMechunitDetails` correctly uses `state.mechunits[0] ?? 'ROB_1'` | `extension.ts:1773,1781,990` |
-| 11 | `editCfgInstance` has no write-back — opens editable JSON but never writes edits to the controller | `extension.ts:1800-1806` |
+| 11 | `editCfgInstance` has no write-back - opens editable JSON but never writes edits to the controller | `extension.ts:1800-1806` |
 | 12 | `createRapidTask` doc lists `Main` as a required CFG attr but the `createCfgInstance` call omits it | `extension.ts:2066-2073` vs `2128-2134` |
 | 13 | Two parallel snippet systems (`snippets/rapid.json` 20 entries vs the `SNIPPETS` map in `RapidCompletionProvider`) with drifted bodies (zone `z10` vs `fine`, etc.); two `SNIPPETS` keys (`ifelse`, `forstep`) are dead | `snippets/rapid.json`, `RapidCompletionProvider.ts:52-114` |
 | 14 | `RapidHoverProvider` doc says the DB has 666 entries; actual is 705 (comment predates keyword additions) | `RapidHoverProvider.ts:12-13` |
-| 15 | TextMate grammar accepts `TASK PERS` but `RapidLanguageIndex` only accepts `LOCAL` — `TASK`-scoped decls highlight but are invisible to outline/definition/references/inlay-hints | `rapid.tmLanguage.json:64-76` vs `RapidLanguageIndex.ts:132-134` |
+| 15 | TextMate grammar accepts `TASK PERS` but `RapidLanguageIndex` only accepts `LOCAL` - `TASK`-scoped decls highlight but are invisible to outline/definition/references/inlay-hints | `rapid.tmLanguage.json:64-76` vs `RapidLanguageIndex.ts:132-134` |
 | 16 | Walkthrough media (`connect.md`, `open.md`, `watch.md`) still describe the pre-0.9.2 11-panel layout | `media/walkthrough/*.md` |
 | 17 | Module-name detection is implemented three ways with different scopes (hover: whole doc; codelens: first 30 lines; index: line-by-line) | `RapidHoverProvider.ts:94`, `RapidCodeLensProvider.ts:89`, `RapidLanguageIndex.ts:165` |
 | 18 | `scripts/probe-moveinauto-token.mjs` and `probe-rmmp-grant.mjs` are untracked (new files) in the git repo | `git status` |
-| 19 | **`abbRobot.refreshInterval` is dead config** — declared (default 1000 ms, min 200) but read nowhere in `src/` (grep: only the declaration) and never passed to the client; polling cadence is hardcoded in the client's `RobotManager` (1 s / 5 s) | `package.json:133` |
+| 19 | **`abbRobot.refreshInterval` is dead config** - declared (default 1000 ms, min 200) but read nowhere in `src/` (grep: only the declaration) and never passed to the client; polling cadence is hardcoded in the client's `RobotManager` (1 s / 5 s) | `package.json:133` |
 | 20 | `abbRobot.robots` settings schema omits `port`/`useHttps`, but the add-robot wizard and the VC port-recovery path persist both into that setting | `package.json:81-115` vs `extension.ts:85-93,653-660` |
 
 ---
@@ -351,14 +351,14 @@ hardcode `D:/abb-rws-vscode/samples/TestExtension.mod`.
 1. Does opening a `.mod` file alone activate the extension (needed for language features),
    given `activationEvents: []` and no `onLanguage:rapid`? (`package.json:43`)
 2. Is the installed `node_modules/abb-rws-client` actually 0.7.1 while the manifest pins
-   0.5.0 — i.e. was a newer tgz installed without renaming? (confirmed installed = 0.7.1;
+   0.5.0 - i.e. was a newer tgz installed without renaming? (confirmed installed = 0.7.1;
    whether the shipped `.vsix` bundles that or 0.5.0 depends on which was present at
    `npm install` time)
 3. Was `abb-rws-client` ever published to the npm registry (README shows `npm i`)? The
    extension consumes a local tarball.
-4. Which FK action string is real — `CalcPoseFromJoints` (`RWS1_PARITY_PLAN.md`) or
+4. Which FK action string is real - `CalcPoseFromJoints` (`RWS1_PARITY_PLAN.md`) or
    `CalcRobTFromJoints` (`RWS_COVERAGE.md`)? **(inferred: `CalcRobTFromJoints` per
    `RwsClient2.ts:1020`, but the RWS 1.0 side uses `CalcRobTFromJoints` too per
-   `RWS1Adapter.ts` — the plan doc's name is stale)**
+   `RWS1Adapter.ts` - the plan doc's name is stale)**
 5. Is shipping `docs/RWS_COVERAGE.md` inside the `.vsix` intentional?
 6. Was the priority=2 subscription upgrade (`RWS1_PARITY_PLAN.md` Stage 15) ever done?

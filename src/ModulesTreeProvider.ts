@@ -3,7 +3,7 @@ import type { RobotManager, MultiRobotManager } from 'abb-rws-client';
 import { Logger } from './Logger';
 
 /**
- * Modules panel — shows the controller's loaded program in a hierarchical tree.
+ * Modules panel - shows the controller's loaded program in a hierarchical tree.
  *
  * Structure:
  *   Status row              (Mode / Motors / Cycle)
@@ -46,7 +46,7 @@ type TaskNode = {
 
 type ModuleNode = {
   kind: 'module';
-  task: string;            // owning task — needed because module names can repeat across tasks
+  task: string;            // owning task - needed because module names can repeat across tasks
   name: string;
   type: string;            // 'ProgMod' | 'SysMod' | … from controller
   hasMain: boolean;
@@ -85,14 +85,14 @@ export class ModulesTreeProvider implements vscode.TreeDataProvider<TreeItem> {
   readonly onDidChangeTreeData = this._onDidChange.event;
 
   /**
-   * Routines keyed by `${task}:${module}` — fetched lazily on first expand,
+   * Routines keyed by `${task}:${module}` - fetched lazily on first expand,
    * persisted across refreshes (clearing every poll-tick race-conditioned with
    * VS Code's getChildren(moduleItem) reads).
    */
   private routinesByModule = new Map<string, Array<{ name: string; symtyp: string; local: boolean }>>();
-  /** Modules per task — `${task}` → list, with type info for collision/sysmod detection. */
+  /** Modules per task - `${task}` → list, with type info for collision/sysmod detection. */
   private modulesByTask = new Map<string, Array<{ name: string; type: string }>>();
-  /** Per-task signature ("MotionTest|user") for change detection — only refetch routines when the per-task module set changes. */
+  /** Per-task signature ("MotionTest|user") for change detection - only refetch routines when the per-task module set changes. */
   private lastModulesKeyByTask = new Map<string, string>();
   /** Per-task PP location for the "PP HERE" marker. */
   private currentPPByTask = new Map<string, { module?: string; routine?: string }>();
@@ -105,7 +105,7 @@ export class ModulesTreeProvider implements vscode.TreeDataProvider<TreeItem> {
   constructor(private manager: MultiRobotManager) {}
 
   /**
-   * Get the active RobotManager — that's where listRoutines / listModulesDetailed /
+   * Get the active RobotManager - that's where listRoutines / listModulesDetailed /
    * getCurrentPP live. We were previously calling these on the MultiRobotManager
    * which proxies state but NOT these methods → silent throw → empty cache.
    */
@@ -124,7 +124,7 @@ export class ModulesTreeProvider implements vscode.TreeDataProvider<TreeItem> {
       return [this.makeItem({ kind: 'status', label: 'Not connected', description: 'click Connect first', icon: 'circle-slash' })];
     }
 
-    // ROUTINES — children of a ModuleNode
+    // ROUTINES - children of a ModuleNode
     if (element && element.node.kind === 'module') {
       const moduleNode = element.node;
       const taskName = moduleNode.task;
@@ -137,7 +137,7 @@ export class ModulesTreeProvider implements vscode.TreeDataProvider<TreeItem> {
         return [this.makeItem({ kind: 'status', label: 'Loading routines…', description: '', icon: 'sync' })];
       }
       if (routines.length === 0) {
-        return [this.makeItem({ kind: 'status', label: '(no routines visible — try unloading then reloading the module)', description: '', icon: 'info' })];
+        return [this.makeItem({ kind: 'status', label: '(no routines visible - try unloading then reloading the module)', description: '', icon: 'info' })];
       }
       const pp = this.currentPPByTask.get(taskName) ?? {};
       return routines.map(r => this.makeItem({
@@ -151,7 +151,7 @@ export class ModulesTreeProvider implements vscode.TreeDataProvider<TreeItem> {
       }));
     }
 
-    // MODULES — children of a TaskNode
+    // MODULES - children of a TaskNode
     if (element && element.node.kind === 'task') {
       const taskName = element.node.name;
       await this.refreshTaskMeta(taskName);
@@ -201,7 +201,7 @@ export class ModulesTreeProvider implements vscode.TreeDataProvider<TreeItem> {
       return out;
     }
 
-    // ROOT — Status row + Actions + Tasks list
+    // ROOT - Status row + Actions + Tasks list
     const items: TreeItem[] = [];
     const { execstate, ctrlstate, opmode, execCycle, tasks } = this.manager.state;
     const isRunning = execstate === 'running';
@@ -255,7 +255,7 @@ export class ModulesTreeProvider implements vscode.TreeDataProvider<TreeItem> {
       }));
     }
 
-    // Tasks section — one node per RAPID task
+    // Tasks section - one node per RAPID task
     items.push(this.makeItem({ kind: 'section', label: '── Tasks ──' }));
     if (!this.active) {
       Logger.warn('tree: no active RobotManager');
@@ -352,7 +352,7 @@ export class ModulesTreeProvider implements vscode.TreeDataProvider<TreeItem> {
 
   // ─── Lazy single-module routine fetch ─────────────────────────────────────
 
-  /** Map of in-flight per-module fetches — prevents duplicate parallel fetches. */
+  /** Map of in-flight per-module fetches - prevents duplicate parallel fetches. */
   private moduleFetchInFlight = new Map<string, Promise<void>>();
 
   /**
@@ -439,7 +439,7 @@ export class ModulesTreeProvider implements vscode.TreeDataProvider<TreeItem> {
         tooltip = `Task: ${node.name}\n` +
                   `Type: ${node.type}\n` +
                   `Motion task: ${node.motiontask ? 'yes (controls a robot)' : 'no (background/static)'}\n` +
-                  `Active: ${node.active ? 'yes — included in current task selection' : 'no — excluded from current cycle'}\n` +
+                  `Active: ${node.active ? 'yes - included in current task selection' : 'no - excluded from current cycle'}\n` +
                   `Task state: ${node.taskstate}\n` +
                   `Execution: ${node.excstate}\n\n` +
                   `Expand to see modules loaded in this task.\n` +
@@ -485,10 +485,10 @@ export class ModulesTreeProvider implements vscode.TreeDataProvider<TreeItem> {
                   : undefined;
         contextValue = 'routine';
         tooltip = `${kindLabel} ${node.module}.${node.name}` +
-                  (node.local ? '\nLocal — only visible inside this module.' : '') +
+                  (node.local ? '\nLocal - only visible inside this module.' : '') +
                   (node.isPPHere ? '\n\nProgram pointer is currently here.' : '') +
                   '\n\nTo run this routine: open the .mod file and click "▶ Run this routine" CodeLens above the PROC.';
-        // No click-to-run on the tree — too easy to trigger accidentally.
+        // No click-to-run on the tree - too easy to trigger accidentally.
         // Routines are run via the CodeLens ▶ in the .mod file editor (explicit, intentional).
         break;
       }

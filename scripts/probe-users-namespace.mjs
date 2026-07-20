@@ -50,7 +50,7 @@ async function main() {
   session = makeSession(base, { user: USER });
   console.log(`Connected to ${base.host} as ${USER}\n`);
 
-  // Discover the /users namespace — print FULL body so we see real hrefs
+  // Discover the /users namespace - print FULL body so we see real hrefs
   console.log('## /users namespace discovery');
   const usersResp = await req('GET', '/users');
   await sleep(300);

@@ -5,7 +5,7 @@ import type { MultiRobotManager } from 'abb-rws-client';
  * Decorates the editor at the controller's current Program Pointer (PP)
  * location. Whenever the active task's PP module + routine + row matches
  * a file that's open, the line is highlighted and a `▶` is shown in the
- * gutter — exactly like a debugger paused at a breakpoint, except it's
+ * gutter - exactly like a debugger paused at a breakpoint, except it's
  * the live RAPID interpreter on the controller.
  *
  * Subscribes to the manager's state-change event and refreshes whenever

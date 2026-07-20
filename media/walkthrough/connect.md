@@ -16,6 +16,6 @@ Once connected:
 - **Live Cell** panel populates with joints, TCP, mode, exec
 - All other panels (Modules, RAPID, Motion, etc.) come alive
 
-If the connection fails, click "Show Logs" on the error notification — the
+If the connection fails, click "Show Logs" on the error notification - the
 extension logs every HTTP request to a session file under
 `~/.abb-rws-extension/logs/`.

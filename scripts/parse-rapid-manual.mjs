@@ -24,7 +24,7 @@ const raw = fs.readFileSync(INPUT, 'utf-8');
 const lines = raw.split('\n');
 
 // Strip page-furniture noise: headers, footers, copyright lines, page numbers.
-// Trim first — footers are column-aligned (leading spaces) and page headers
+// Trim first - footers are column-aligned (leading spaces) and page headers
 // carry a leading form feed, both of which defeat ^-anchored patterns.
 // Copyright / doc-number lines share their line with the page number in the
 // two-column layout, so those are substring tests.
@@ -44,7 +44,7 @@ function isNoise(line) {
 
 // At page breaks pdftotext merges page furniture onto content lines, either
 // side ("[\Orient]        1 Instructions", "1 Instructions        See",
-// "Continued        Application manual - …") — strip the furniture column,
+// "Continued        Application manual - …") - strip the furniture column,
 // keep the content.
 function stripPageHeader(line) {
   return line
@@ -59,7 +59,7 @@ function stripPageHeader(line) {
 function entryHeader(line, sectionNum) {
   // Use a regex that captures: section.entry, name, dash, brief
   // Names: section 1+2 use TitleCase, section 3 uses lowerCase
-  const re = new RegExp(`^${sectionNum}\\.(\\d+)\\s+([A-Za-z_][\\w]*?)\\s*[-–—]\\s*(.+?)(?:\\s*\\.{3,}.*)?$`);
+  const re = new RegExp(`^${sectionNum}\\.(\\d+)\\s+([A-Za-z_][\\w]*?)\\s*[---]\\s*(.+?)(?:\\s*\\.{3,}.*)?$`);
   const m = line.match(re);
   if (!m) { return null; }
   return { num: m[1], name: m[2], brief: m[3].trim() };
@@ -77,7 +77,7 @@ function splitSection(bodyLines, sectionNum) {
     if (isNoise(ln)) continue;
     const h = entryHeader(ln.trim(), sectionNum);
     if (h) {
-      // Same entry repeated on next page — skip, keep accumulating into cur
+      // Same entry repeated on next page - skip, keep accumulating into cur
       if (cur && h.name === cur.name) { continue; }
       if (cur) { entries.set(cur.name, { ...cur, body: curLines.join('\n') }); }
       cur = h;
@@ -152,7 +152,7 @@ function extractUsage(body) {
   return usage.join(' ').replace(/\s+/g, ' ').trim();
 }
 
-// Extract examples — short code-like blocks (lines starting with the entry name, or in indented blocks)
+// Extract examples - short code-like blocks (lines starting with the entry name, or in indented blocks)
 function extractExamples(body, entryName) {
   const lines = body.split('\n');
   const examples = [];
@@ -232,11 +232,11 @@ const db = {};
  *   - `[ ParamName ':=' ] < expression (KIND) of TypeName > ','`   → required positional
  *   - `[ '\' OptName ':=' < ... > ]`                                → optional named
  *   - `[ '\' Switch ]` or `[ '\' Switch ',' ]`                      → optional switch (no value)
- * Returns: [{ name, type, optional, switch, alt }] in CALL ORDER — the order
+ * Returns: [{ name, type, optional, switch, alt }] in CALL ORDER - the order
  * the arguments appear in the syntax pattern. Signature help indexes into
  * this list, so optional args must stay interleaved with the positional ones,
  * exactly where they occur in a call. `alt` marks a parameter that is an
- * alternative to the previous one (`Signal | PersBool`) — they share one
+ * alternative to the previous one (`Signal | PersBool`) - they share one
  * call slot.
  */
 function parseParameters(syntax) {
@@ -247,9 +247,9 @@ function parseParameters(syntax) {
   // Optional named (\Name):
   //   [ \s* '\' (Name) \s* ':=' ... < ... of (Type) > ]
   // Optional switch:
-  //   [ \s* '\' (Name) \s* ]   — sometimes with a quoted ',' before the `]`
+  //   [ \s* '\' (Name) \s* ]   - sometimes with a quoted ',' before the `]`
   // The token between `<` and `of` varies: expression, variable, persistent,
-  // "var or pers", "variable or persistent", reference — with erratic spacing.
+  // "var or pers", "variable or persistent", reference - with erratic spacing.
   // Quotes around the backslash sometimes decode as U+FFFD in the text dump.
   const wrapper = String.raw`(?:expression|persistent|variable|reference|var|pers)\b`;
   const bs = String.raw`['�]?\\['�]?`;
@@ -257,7 +257,7 @@ function parseParameters(syntax) {
   const optNamedRe = new RegExp(String.raw`\[\s*${bs}\s*([A-Za-z_]\w*)\s*'?:='?\s*<\s*${wrapper}[^>]*of\s+(\w+)\s*>\s*\]`, 'gi');
   const optSwitchRe = new RegExp(String.raw`\[\s*${bs}\s*([A-Za-z_]\w*)\s*(?:','\s*)?\](?!\s*<)`, 'gi');
 
-  // Collect every match with its position, then sort — this preserves call order.
+  // Collect every match with its position, then sort - this preserves call order.
   const found = [];
   for (const m of syntax.matchAll(requiredRe)) {
     found.push({ at: m.index, end: m.index + m[0].length, name: m[1], type: m[2], optional: false });
@@ -274,7 +274,7 @@ function parseParameters(syntax) {
   let prevEnd = -1;
   for (const { at, end, ...p } of found) {
     // Multi-page entries can repeat a fragment; alternatives (\V | \T) are
-    // distinct names — keep first occurrence of each name only.
+    // distinct names - keep first occurrence of each name only.
     if (params.some(q => q.name === p.name)) { prevEnd = end; continue; }
     // A bare `|` between this match and the previous one marks an alternative.
     // Anything besides separator characters in between (e.g. an unparsable
@@ -325,7 +325,7 @@ const keywords = [
   ['RECORD',     'Record declaration', 'Defines a composite (struct-like) data type.', 'RECORD recordType\n  …\nENDRECORD'],
   ['ENDRECORD',  'Record end',         'Closes a RECORD block.', 'ENDRECORD'],
   ['VAR',        'Variable declaration', 'Declares a variable. Reset to its initial value when the program is started.', 'VAR num counter := 0;'],
-  ['PERS',       'Persistent variable declaration', 'Declares a persistent variable — value survives program restarts.', 'PERS num totalRuns := 0;'],
+  ['PERS',       'Persistent variable declaration', 'Declares a persistent variable - value survives program restarts.', 'PERS num totalRuns := 0;'],
   ['CONST',      'Constant declaration', 'Declares a compile-time constant.', 'CONST num maxIters := 100;'],
   ['LOCAL',      'Local scope modifier', 'Marks a routine or data as local to the module (not exported).', 'LOCAL PROC helper()\n  …\nENDPROC'],
   ['TASK',       'Task scope modifier', 'Declares task-private persistent data.', 'TASK PERS num taskCounter := 0;'],
@@ -358,7 +358,7 @@ const keywords = [
   ['CONNECT',   'Connect interrupt',  'Bind a signal/condition to a TRAP routine.', 'CONNECT intr WITH trapName;'],
   ['WITH',      'With clause',        'Used in CONNECT: WITH trapName.', 'CONNECT intr WITH trapName;'],
   ['NOSTEPIN',  'NoStepIn flag',      'Module attribute: routines cannot be stepped into.', 'MODULE m1(NOSTEPIN)'],
-  ['SYSMODULE', 'SysModule flag',     'Module attribute: marks as system module — survives Reset RAPID.', 'MODULE myUtils(SYSMODULE)'],
+  ['SYSMODULE', 'SysModule flag',     'Module attribute: marks as system module - survives Reset RAPID.', 'MODULE myUtils(SYSMODULE)'],
   ['VIEWONLY',  'ViewOnly flag',      'Module attribute: read-only.', 'MODULE m1(VIEWONLY)'],
   ['READONLY',  'ReadOnly flag',      'Module attribute: data is constant.', 'MODULE m1(READONLY)'],
   ['NOVIEW',    'NoView flag',        'Module attribute: source not displayable.', 'MODULE m1(NOVIEW)'],
@@ -376,7 +376,7 @@ fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, JSON.stringify(db, null, 0));  // minified
 
 const stats = fs.statSync(OUT);
-console.log(`Wrote ${OUT} — ${Object.keys(db).length} entries, ${(stats.size / 1024).toFixed(1)} KB`);
+console.log(`Wrote ${OUT} - ${Object.keys(db).length} entries, ${(stats.size / 1024).toFixed(1)} KB`);
 
 // ─── Verify a few entries ───────────────────────────────────────────────────
 const samples = ['movej', 'movel', 'waittime', 'tpwrite', 'abs', 'cos', 'robtarget', 'jointtarget', 'num'];

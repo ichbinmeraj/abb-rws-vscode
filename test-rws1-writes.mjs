@@ -1,4 +1,4 @@
-// Comprehensive RWS 1.0 *write* verification — every modify endpoint, restored.
+// Comprehensive RWS 1.0 *write* verification - every modify endpoint, restored.
 // Auto-detects the IRC5 VC port. Each test restores controller state to what
 // it was before the test. Safe to run repeatedly.
 //
@@ -109,10 +109,10 @@ const canModify = inAuto || rmmpPrivilege === "modify" || rmmpPrivilege === "exc
 
 console.log("");
 if (!canModify) {
-  console.log(`⚠️  opmode=${initialState.opmode}, RMMP=${rmmpPrivilege} — mastership-required tests will SKIP.`);
+  console.log(`⚠️  opmode=${initialState.opmode}, RMMP=${rmmpPrivilege} - mastership-required tests will SKIP.`);
   console.log(`   To run full tests: switch to AUTO in RobotStudio, or grant RMMP from FlexPendant.`);
 } else {
-  console.log(`✓  opmode=${initialState.opmode}, RMMP=${rmmpPrivilege} — full write tests will run.`);
+  console.log(`✓  opmode=${initialState.opmode}, RMMP=${rmmpPrivilege} - full write tests will run.`);
 }
 console.log("");
 
@@ -182,7 +182,7 @@ await test("getControllerClock", async () => {
   return `datetime=${originalClock.datetime}`;
 });
 await test("setControllerClock to PC time", async () => {
-  // RW6.16 only allows GET on /ctrl/clock — POST and PUT both return 405.
+  // RW6.16 only allows GET on /ctrl/clock - POST and PUT both return 405.
   // This is a controller-firmware limitation, not a bug in our code.
   const r = await client.request("OPTIONS", "/ctrl/clock?json=1").catch(() => ({ status: 0 }));
   // Skip if the server doesn't allow modification methods on this endpoint
@@ -379,7 +379,7 @@ await test("resetRapid (PP-to-Main)", async () => {
     ppSet = true;
   } catch (e) {
     if (String(e).includes("400") || String(e).includes("3500")) {
-      // org_code 3500 = "Routine main not found" — controller has no entrypoint.
+      // org_code 3500 = "Routine main not found" - controller has no entrypoint.
       // Happens when no program is built; SYSMODULE module's main isn't auto-picked.
       skip("no program entrypoint (controller needs program built first)");
     }
@@ -442,7 +442,7 @@ await test("find writable DO signal", async () => {
   return `${candidate.name} (lvalue=${originalSignalValue})`;
 });
 await test("writeSignal toggle", async () => {
-  // Even in AUTO, writeSignal needs RMMP=modify on this VC — controller rejects
+  // Even in AUTO, writeSignal needs RMMP=modify on this VC - controller rejects
   // with HTTP 403 "Rejected" otherwise.
   if (rmmpPrivilege !== "modify" && rmmpPrivilege !== "exclusive") {
     skip("needs RMMP=modify (FlexPendant grant)");
@@ -483,7 +483,7 @@ console.log("\n" + "═".repeat(70));
 console.log(" DIPC queue lifecycle");
 console.log("═".repeat(70));
 
-// DIPC needs TWO queues — send goes from a source queue to a destination.
+// DIPC needs TWO queues - send goes from a source queue to a destination.
 // Pre-clean any leftovers from prior runs (delete works for queues we own).
 const DIPC_SRC  = `rws1tq_src_${Date.now() % 100000}`;
 const DIPC_DEST = `rws1tq_dst_${Date.now() % 100000}`;
@@ -550,7 +550,7 @@ await test("clearEventLog(0)", async () => {
 });
 
 // ─── Final ─────────────────────────────────────────────────────────────────
-// /logout releases any held mastership/subscriptions before disconnect — prevents orphans.
+// /logout releases any held mastership/subscriptions before disconnect - prevents orphans.
 await client.request("GET", "/logout").catch(() => {});
 await client.disconnect();
 
@@ -560,11 +560,11 @@ console.log("═".repeat(70));
 
 if (skipped.length) {
   console.log("\nSkipped (mostly mode-dependent):");
-  for (const s of skipped) console.log(`  ⊘ ${s.label} — ${s.reason}`);
+  for (const s of skipped) console.log(`  ⊘ ${s.label} - ${s.reason}`);
 }
 
 if (failed.length === 0) {
-  console.log(`\n🎉  Every applicable RWS 1.0 write op verified.${skipped.length ? ` (${skipped.length} skipped — see above)` : ""}`);
+  console.log(`\n🎉  Every applicable RWS 1.0 write op verified.${skipped.length ? ` (${skipped.length} skipped - see above)` : ""}`);
   process.exit(0);
 }
 

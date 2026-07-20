@@ -1,9 +1,9 @@
-# Source — only the bundled dist/extension.js ships
+# Source - only the bundled dist/extension.js ships
 src/**
 tsconfig.json
 build.js
 
-# Tests, probes, scratch — internal dev tools
+# Tests, probes, scratch - internal dev tools
 test-*.js
 test-*.cjs
 test-*.mjs
@@ -21,7 +21,7 @@ dist/*.map
 # `.controller.mod` file is an orphan from earlier dev work, exclude.
 samples/MotionTest.controller.mod
 
-# Internal docs and plans — ship only the marketplace-facing root markdown
+# Internal docs and plans - ship only the marketplace-facing root markdown
 *.md
 !README.md
 !CHANGELOG.md

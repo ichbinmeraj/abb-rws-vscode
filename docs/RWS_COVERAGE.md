@@ -8,11 +8,11 @@ status, and any blockers.
 Run `node test-coverage.js` at any time to revalidate.
 
 **Legend**:
-- ✅ **Verified** — implemented + tested live on at least one VC
-- 🆕 **Implemented** — interface + RWS 2.0 method written, not yet live-tested
-- ⏳ **Planned** — known endpoint, not yet implemented
-- 🚫 **Blocked** — endpoint exists but undocumented format / ABB safety / unavailable on default VC
-- 🟡 **Partial** — RWS 2.0 done, RWS 1.0 missing (or vice versa)
+- ✅ **Verified** - implemented + tested live on at least one VC
+- 🆕 **Implemented** - interface + RWS 2.0 method written, not yet live-tested
+- ⏳ **Planned** - known endpoint, not yet implemented
+- 🚫 **Blocked** - endpoint exists but undocumented format / ABB safety / unavailable on default VC
+- 🟡 **Partial** - RWS 2.0 done, RWS 1.0 missing (or vice versa)
 
 ## Summary by domain
 
@@ -48,7 +48,7 @@ Run `node test-coverage.js` at any time to revalidate.
 
 ## Critical features now in place
 
-### Configuration database (`/rw/cfg`) — full surface
+### Configuration database (`/rw/cfg`) - full surface
 Every controller config domain (EIO/MMC/MOC/PROC/SIO/SYS) is reachable:
 - List domains, types within a domain, instances of a type
 - Read individual instance attributes
@@ -88,18 +88,18 @@ Every controller config domain (EIO/MMC/MOC/PROC/SIO/SYS) is reachable:
 
 ## Known blockers
 
-1. **Mode change confirmation** — `POST /rw/panel/opmode opmode=MAN` puts the controller in `AUTO_CH`. The acknowledge endpoint exists but doesn't seem to complete the transition without FlexPendant — by ABB safety design.
-2. **Forward Kinematics** — `?action=CalcRobTFromJoints` accepts requests but parameter format is undocumented; ABB community recommends RAPID-mediated workaround.
-3. **Remote jog** — endpoint accepts the request but rejects with `SYS_CTRL_E_OPMODE_NOT_ALLOWED for user`. ABB UAS has no jog grant.
-4. **Motors-on in MANR** — requires FlexPendant deadman; cannot be simulated from RWS.
-5. **VC port reassignment** — RobotStudio assigns random RWS ports; worked around with wide TCP scan.
-6. **Session pool exhaustion** — controller's 70-session pool fills in seconds without cookie reuse; fixed by Set-Cookie capture.
-7. **WebSocket subprotocol** — RWS 2.0 VC rejects `robapi2_subscription`; falls back to polling. Real OmniCore works.
+1. **Mode change confirmation** - `POST /rw/panel/opmode opmode=MAN` puts the controller in `AUTO_CH`. The acknowledge endpoint exists but doesn't seem to complete the transition without FlexPendant - by ABB safety design.
+2. **Forward Kinematics** - `?action=CalcRobTFromJoints` accepts requests but parameter format is undocumented; ABB community recommends RAPID-mediated workaround.
+3. **Remote jog** - endpoint accepts the request but rejects with `SYS_CTRL_E_OPMODE_NOT_ALLOWED for user`. ABB UAS has no jog grant.
+4. **Motors-on in MANR** - requires FlexPendant deadman; cannot be simulated from RWS.
+5. **VC port reassignment** - RobotStudio assigns random RWS ports; worked around with wide TCP scan.
+6. **Session pool exhaustion** - controller's 70-session pool fills in seconds without cookie reuse; fixed by Set-Cookie capture.
+7. **WebSocket subprotocol** - RWS 2.0 VC rejects `robapi2_subscription`; falls back to polling. Real OmniCore works.
 
-## Testing status — **54 / 54 endpoints verified live (100%)**
+## Testing status - **54 / 54 endpoints verified live (100%)**
 
 Comprehensive coverage test (`test-coverage.js`) was run against an OmniCore VC
-on RobotWare 7.21.0 (IRB 1200-5/0.9). All 54 GET endpoints across Waves 1–4
+on RobotWare 7.21.0 (IRB 1200-5/0.9). All 54 GET endpoints across Waves 1-4
 returned HTTP 200 with parseable XHTML.
 
 **Fixes made during the testing pass:**
@@ -111,14 +111,14 @@ returned HTTP 200 with parseable XHTML.
    (and codes vary by RobotWare release)
 
 **Newly discovered endpoints** during this pass (added to coverage):
-- `/rw/rapid/tasks/{task}/structural-changecount` — track symbol/module changes
-- `/rw/rapid/tasks/{task}/motion` — per-task motion data
-- `/rw/rapid/tasks/{task}/activation-record` — call stack / current routine
-- `/rw/rapid/tasks/{task}/program` — loaded program metadata (HTTP 204 when empty)
-- `/rw/rapid/tasks/{task}/syncstate/program-pointer` — alternate PP endpoint
-- `/rw/rapid/tasks/{task}/syncstate/motion-pointer` — alternate motion-pointer endpoint
-- `/rw/rapid/tasks/{task}/pref-data-types` — preferred data types
-- `/rw/rapid/tasks/{task}/pallet/{n}` and `/pallet-head` — palletizing
+- `/rw/rapid/tasks/{task}/structural-changecount` - track symbol/module changes
+- `/rw/rapid/tasks/{task}/motion` - per-task motion data
+- `/rw/rapid/tasks/{task}/activation-record` - call stack / current routine
+- `/rw/rapid/tasks/{task}/program` - loaded program metadata (HTTP 204 when empty)
+- `/rw/rapid/tasks/{task}/syncstate/program-pointer` - alternate PP endpoint
+- `/rw/rapid/tasks/{task}/syncstate/motion-pointer` - alternate motion-pointer endpoint
+- `/rw/rapid/tasks/{task}/pref-data-types` - preferred data types
+- `/rw/rapid/tasks/{task}/pallet/{n}` and `/pallet-head` - palletizing
 
 ## Test runner
 
@@ -134,7 +134,7 @@ node test-coverage.js
 # Passed: 54 / 54
 ```
 
-## RWS 1.0 parity status — COMPLETE
+## RWS 1.0 parity status - COMPLETE
 
 **As of 2026-05-05**: RWS 1.0 has full parity with RWS 2.0 for all the new
 endpoints, via `abb-rws-client@0.6.0` + ~65 new methods in `RWS1Adapter`.
@@ -142,7 +142,7 @@ endpoints, via `abb-rws-client@0.6.0` + ~65 new methods in `RWS1Adapter`.
 ### How parity was achieved
 
 1. **`abb-rws-client@0.6.0`** added one new public method:
-   `client.request(method, path, body?)` — generic HTTP escape hatch reusing
+   `client.request(method, path, body?)` - generic HTTP escape hatch reusing
    the auth/cookie/queue/retry infrastructure.
 
 2. **`RWS1Adapter`** implements each new method as ~10 lines: call `request()`,
@@ -171,8 +171,8 @@ endpoints, via `abb-rws-client@0.6.0` + ~65 new methods in `RWS1Adapter`.
 
 ### Notable RWS 1.0 quirks captured
 
-- License path: `/rw/system/license` (singular — official doc says plural but live VC requires singular)
-- `/ctrl/options` returns HTTP 204 (empty body) — adapter handles gracefully
+- License path: `/rw/system/license` (singular - official doc says plural but live VC requires singular)
+- `/ctrl/options` returns HTTP 204 (empty body) - adapter handles gracefully
 - CFG instance attributes: **inlined as `attrib[]` array** in instance-list response (vs RWS 2.0's separate GET)
 - Mechunit axes: count + sub-resource link list (fetch each individually)
 - Pagination: `_links.next.href` in JSON (vs RWS 2.0's `<a rel="next">` in XHTML)
@@ -184,7 +184,7 @@ endpoints, via `abb-rws-client@0.6.0` + ~65 new methods in `RWS1Adapter`.
 | Endpoint | Reason |
 |---|---|
 | `/ctrl/features` | New in RobotWare 7 |
-| `/ctrl/certstore` | TLS cert management — new |
+| `/ctrl/certstore` | TLS cert management - new |
 | `/ctrl/registry` | New in RobotWare 7 |
 
 ### Verification
@@ -210,7 +210,7 @@ Both adapters have complete coverage of their respective protocol's surface.
 | `TEMP` | Temp files | 🆕 Read via `listDirectory` |
 
 All volumes work with the existing `listDirectory(path)` / `readFile(path)` /
-`uploadFile(path, content)` methods — just pass the volume as a path prefix
+`uploadFile(path, content)` methods - just pass the volume as a path prefix
 (e.g. `BACKUP/snapshot-2026-05-05`).
 
 ## Subscription resource types
@@ -232,7 +232,7 @@ add to the manager's startSubscriptions list):
 
 1. **Live-test Wave 1 endpoints** on the OmniCore VC once the session pool clears
 2. **Add RobotManager exposes** for the most useful new methods (CFG read, backup status, module source, PP control)
-3. **Build CFG editor UI** — tree provider showing EIO/MMC/MOC/PROC/SIO/SYS hierarchy with read-write per instance
-4. **Build RAPID debugger** — VS Code DebugAdapter wrapping our PP/breakpoint methods
+3. **Build CFG editor UI** - tree provider showing EIO/MMC/MOC/PROC/SIO/SYS hierarchy with read-write per instance
+4. **Build RAPID debugger** - VS Code DebugAdapter wrapping our PP/breakpoint methods
 5. **RWS 1.0 parity** for new methods (slot-by-slot)
-6. **Subscription expansion** — wire up signal/persvar/jointtarget subscriptions when needed
+6. **Subscription expansion** - wire up signal/persvar/jointtarget subscriptions when needed

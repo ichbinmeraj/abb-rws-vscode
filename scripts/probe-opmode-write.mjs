@@ -1,4 +1,4 @@
-// Live-probe RWS 2.0 setOperationMode — finds the working endpoint+body shape
+// Live-probe RWS 2.0 setOperationMode - finds the working endpoint+body shape
 // by trying every plausible variant against the running VC.
 //
 // Run:  node probe-opmode-write.js

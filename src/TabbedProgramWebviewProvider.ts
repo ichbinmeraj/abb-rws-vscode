@@ -2,29 +2,29 @@ import * as vscode from 'vscode';
 import type { MultiRobotManager, RobotManager } from 'abb-rws-client';
 
 /**
- * The Program panel — tabbed webview with two tabs: Modules and Watch.
+ * The Program panel - tabbed webview with two tabs: Modules and Watch.
  *
  * Replaces the previous CompositeTreeProvider-backed view with a custom
  * webview that has real top-of-panel tab buttons. Trade-offs vs the
  * tree-based version:
- *   ✓ Cleaner top-level UX — only one section visible at a time.
+ *   ✓ Cleaner top-level UX - only one section visible at a time.
  *   ✓ Custom layouts per tab (we can use grid / cards / inline buttons
  *     in ways tree views can't).
- *   ✗ No native VS Code right-click menus on items — actions are
+ *   ✗ No native VS Code right-click menus on items - actions are
  *     surfaced as inline buttons on each row instead.
- *   ✗ No native tree drill-down — module → routines drill is replaced by
+ *   ✗ No native tree drill-down - module → routines drill is replaced by
  *     "click a module to open its source"; routines stay accessible via
  *     CodeLens in the .mod editor and via the ABB command palette.
  *
  * State updates: the provider subscribes to `multi.onDidChange` and
  * posts a fresh snapshot to the webview on every change. The webview
- * does no fetching itself — it's a pure render surface.
+ * does no fetching itself - it's a pure render surface.
  *
  * Action wiring: the webview posts `{ type: 'command', name, args }`
  * messages back to the extension; the extension dispatches via
  * `vscode.commands.executeCommand`. This means every action available
  * in the existing tree views is reachable from the webview via the
- * same command IDs — no command duplication.
+ * same command IDs - no command duplication.
  */
 
 interface WatchEntry {
@@ -137,7 +137,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
 
   /** Background: fetch routines for every loaded program module so the
    *  collision check has data without the user needing to expand each.
-   *  Best-effort — failures are silent (cache stores empty list). */
+   *  Best-effort - failures are silent (cache stores empty list). */
   private async eagerFetchRoutinesForCollisionCheck(): Promise<void> {
     const active = this.multi.active;
     if (!active) { return; }
@@ -180,7 +180,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
     }
   }
 
-  /** Force a fresh post — called when the watch list mutates outside the
+  /** Force a fresh post - called when the watch list mutates outside the
    *  manager-state cycle (add / remove / edit). */
   refresh(): void { void this.postState(); }
 
@@ -257,7 +257,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
 
   private renderHtml(webview: vscode.Webview): string {
     const cspSource = webview.cspSource;
-    // Codicon font + CSS — shipped at media/codicons/. asWebviewUri rewrites
+    // Codicon font + CSS - shipped at media/codicons/. asWebviewUri rewrites
     // the file:// path so the webview's CSP-restricted iframe can load it.
     const codiconCssUri = this.extensionUri
       ? webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', 'codicons', 'codicon.css'))
@@ -347,7 +347,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
     .status-banner.guardstop .dot { background: var(--vscode-charts-red, #f85149); }
     .status-banner.disconnected .dot { background: var(--vscode-descriptionForeground); }
 
-    /* Codicon helper — sizing + alignment */
+    /* Codicon helper - sizing + alignment */
     .codicon { font-size: 14px; vertical-align: middle; line-height: 1; }
     .codicon-sm { font-size: 12px; }
     .icon-blue   { color: var(--vscode-charts-blue, currentColor); }
@@ -633,7 +633,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
       font-style: italic;
     }
 
-    /* Warning banner — shown above the modules list when the controller is
+    /* Warning banner - shown above the modules list when the controller is
        in a state that will reject a common operation (e.g. main-collision
        blocking PP-to-Main). */
     .warning-banner {
@@ -684,7 +684,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
       <button id="btn-exec"     data-state="stopped" title="Start / Stop RAPID execution"><span id="btn-exec-icon" class="codicon codicon-play"></span> <span id="btn-exec-label">Start</span></button>
       <button id="btn-pp-main"  title="Reset program pointer to main"><span class="codicon codicon-debug-restart"></span> PP to Main</button>
       <button id="btn-opmode"   title="Switch operation mode (VC only)"><span id="btn-opmode-icon" class="codicon codicon-lock"></span> <span id="btn-opmode-label">Mode</span></button>
-      <button id="btn-speed"    title="Set speed ratio (0–100%)"><span class="codicon codicon-dashboard"></span> <span id="btn-speed-label">Speed</span></button>
+      <button id="btn-speed"    title="Set speed ratio (0-100%)"><span class="codicon codicon-dashboard"></span> <span id="btn-speed-label">Speed</span></button>
       <button id="btn-load" class="primary"><span class="codicon codicon-cloud-upload"></span> Load Program…</button>
     </div>
 
@@ -738,7 +738,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
     $('btn-opmode').onclick   = () => cmd('abbRobot.setOpMode');
     $('btn-speed').onclick    = () => cmd('abbRobot.setSpeedRatio');
 
-    // Toggle buttons — onclick set per state in updateActionButtons().
+    // Toggle buttons - onclick set per state in updateActionButtons().
     $('btn-motors').onclick = () => {
       // The data-state attribute reflects the LATEST poll; we send the
       // OPPOSITE command. The button briefly stays in the prior state
@@ -752,7 +752,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
     };
 
     function updateActionButtons(s) {
-      // Motors toggle — green/warning when ON, muted when OFF.
+      // Motors toggle - green/warning when ON, muted when OFF.
       const motorsBtn = $('btn-motors');
       const motorsState = (s.motors || '').toLowerCase();
       const motorsOn = motorsState === 'motoron';
@@ -765,7 +765,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
                                            motorsState === 'emergencystop' ? 'E-Stop' :
                                            'Motors OFF';
 
-      // Exec toggle — running shows Stop+warning bg; stopped shows Start.
+      // Exec toggle - running shows Stop+warning bg; stopped shows Start.
       const execBtn = $('btn-exec');
       const isRunning = !!s.running;
       execBtn.dataset.state = isRunning ? 'running' : 'stopped';
@@ -773,7 +773,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
       $('btn-exec-icon').className = 'codicon ' + (isRunning ? 'codicon-debug-stop' : 'codicon-play');
       $('btn-exec-label').textContent = isRunning ? 'Stop' : 'Start';
 
-      // Op-mode — lock for AUTO (blue), unlock for MAN* (warning).
+      // Op-mode - lock for AUTO (blue), unlock for MAN* (warning).
       const opmodeBtn = $('btn-opmode');
       const opmode = s.opmode || '';
       const isAuto = opmode === 'AUTO';
@@ -781,7 +781,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
       $('btn-opmode-icon').className = 'codicon ' + (isAuto ? 'codicon-lock' : 'codicon-unlock');
       $('btn-opmode-label').textContent = opmode || 'Mode';
 
-      // Speed — current ratio + warning tint when below 30%.
+      // Speed - current ratio + warning tint when below 30%.
       const speedBtn = $('btn-speed');
       const speed = (typeof s.speed === 'number') ? s.speed : null;
       $('btn-speed-label').textContent = speed !== null ? speed + '%' : 'Speed';
@@ -897,7 +897,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
 
     function renderTasks(tasks) {
       const root = $('modules-list');
-      // Total module count for the tab badge — sum across active tasks
+      // Total module count for the tab badge - sum across active tasks
       const totalModules = tasks.reduce((n, t) => n + (t.active ? t.modules.length : 0), 0);
       $('count-modules').textContent = totalModules;
 
@@ -1050,7 +1050,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
 
     let currentTasks = [];
 
-    // (legacy renderModules and currentModules removed — Tasks group is the new layout.)
+    // (legacy renderModules and currentModules removed - Tasks group is the new layout.)
 
     function renderWatches(ws) {
       const root = $('watch-list');
@@ -1109,7 +1109,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
       renderWatches(currentWatches);
     });
 
-    // Initial paint — show disabled state until first state arrives.
+    // Initial paint - show disabled state until first state arrives.
     updateActionButtons({ connected: false });
   </script>
 </body>

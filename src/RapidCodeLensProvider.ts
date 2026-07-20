@@ -16,7 +16,7 @@ import * as vscode from 'vscode';
  *
  * Why a CodeLens (vs. the tree-panel button alone):
  *   - inline, immediately discoverable
- *   - works while you're EDITING the file — no tree navigation
+ *   - works while you're EDITING the file - no tree navigation
  *   - visually anchors PP-to-Routine to the code, which is the right place
  */
 
@@ -24,7 +24,7 @@ export class RapidCodeLensProvider implements vscode.CodeLensProvider {
   private readonly _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChangeCodeLenses = this._onDidChange.event;
 
-  /** Re-emit lenses when the user types — VS Code calls provideCodeLenses again on each fire. */
+  /** Re-emit lenses when the user types - VS Code calls provideCodeLenses again on each fire. */
   refresh(): void { this._onDidChange.fire(); }
 
   provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
@@ -49,22 +49,22 @@ export class RapidCodeLensProvider implements vscode.CodeLensProvider {
       if (!m) { continue; }
       const kind = (m[1] || m[3] || m[5]).toUpperCase() as 'PROC' | 'FUNC' | 'TRAP';
       const name = m[2] || m[4] || m[6];
-      // Anchor lenses to the routine's name token (precise) — fall back to start-of-line
+      // Anchor lenses to the routine's name token (precise) - fall back to start-of-line
       const idx = text.indexOf(name, text.search(/\S/));
       const range = idx >= 0
         ? new vscode.Range(i, idx, i, idx + name.length)
         : new vscode.Range(i, 0, i, text.length);
 
-      // ▶ Run — set PP at this routine + start
+      // ▶ Run - set PP at this routine + start
       const runLens = new vscode.CodeLens(range, {
-        title: kind === 'TRAP' ? '▶ (TRAP — interrupt handler, not directly runnable)' : '▶ Run this routine',
+        title: kind === 'TRAP' ? '▶ (TRAP - interrupt handler, not directly runnable)' : '▶ Run this routine',
         command: kind === 'TRAP' ? '' : 'abbRobot.runRoutineFromCodeLens',
         arguments: [moduleName, name, kind],
       });
       lenses.push(runLens);
 
       if (kind !== 'TRAP') {
-        // ▶ Set PP — just set, don't start
+        // ▶ Set PP - just set, don't start
         const ppLens = new vscode.CodeLens(range, {
           title: '▶ Set PP here',
           command: 'abbRobot.setPPFromCodeLens',

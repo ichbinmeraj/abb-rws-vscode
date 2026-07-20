@@ -1,4 +1,4 @@
-/* End-to-end command behavior test — uses the EXACT parsing logic from
+/* End-to-end command behavior test - uses the EXACT parsing logic from
  * RWS2Adapter and the same data flow each command takes.
  *
  * Run: node test-commands.js
@@ -38,7 +38,7 @@ const results = [];
 function check(name, condition, hint) {
   const ok = !!condition;
   results.push({ name, ok, hint });
-  console.log(`${ok ? PASS : FAIL} ${name}${hint ? ' — ' + hint : ''}`);
+  console.log(`${ok ? PASS : FAIL} ${name}${hint ? ' - ' + hint : ''}`);
 }
 
 function header(t) {

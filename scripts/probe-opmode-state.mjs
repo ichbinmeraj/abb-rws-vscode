@@ -9,7 +9,7 @@ const session = makeSession(RWS2_URL);
 const req = session.req;
 
 (async () => {
-  // 1. Read the FULL opmode resource — includes lock/pending state
+  // 1. Read the FULL opmode resource - includes lock/pending state
   const r1 = await req('GET', '/rw/panel/opmode');
   console.log('GET /rw/panel/opmode:');
   console.log(r1.body.replace(/<\?xml.*?\?>/, '').replace(/<!DOCTYPE.*?>/, '').replace(/<html[^>]*>|<head>[\s\S]*?<\/head>|<\/?body[^>]*>|<\/html>/g, '').replace(/></g, '>\n<').slice(0, 1500));
@@ -40,7 +40,7 @@ const req = session.req;
   if (r5.body) console.log('  ', r5.body.match(/<span[^>]*>[^<]*<\/span>/g)?.slice(0, 6).join('  '));
   await sleep(150);
 
-  // 5. Read the lock-state — saw pnl-lockstate-li in the opmode response
+  // 5. Read the lock-state - saw pnl-lockstate-li in the opmode response
   console.log('\nGET /rw/panel/opmode/lock-state:');
   const rLock = await req('GET', '/rw/panel/opmode/lock-state');
   console.log('  status', rLock.status);
@@ -50,7 +50,7 @@ const req = session.req;
   // 6. Check pending dialogs (FlexPendant approval queue)
   console.log('\nGET /rw/panel/operatorpanel/dialog (pending dialogs?):');
   const rDlg = await req('GET', '/rw/panel/operatorpanel/dialog');
-  console.log('  status', rDlg.status, '— body len', rDlg.body?.length);
+  console.log('  status', rDlg.status, '- body len', rDlg.body?.length);
   await sleep(150);
 
   // 7. Try the actual switch and see the FULL error body

@@ -1,6 +1,6 @@
 MODULE TestMotion
     !========================================================================
-    ! TestMotion.mod — motion test routines. ONLY runs when the controller
+    ! TestMotion.mod - motion test routines. ONLY runs when the controller
     !                  is in MANR with motors on. Otherwise will fail at the
     !                  first MoveJ.
     !
@@ -24,11 +24,11 @@ MODULE TestMotion
     PERS num motionCycles := 0;
 
     !========================================================================
-    ! main() — moves to home, then cycles through 3 points.
+    ! main() - moves to home, then cycles through 3 points.
     !========================================================================
     PROC main()
         TPErase;
-        TPWrite "Motion test — moving to home";
+        TPWrite "Motion test - moving to home";
         MoveAbsJ jHome\NoEOffs, v500, fine, tool0;
 
         WHILE motionCycles < 3 DO
@@ -46,7 +46,7 @@ MODULE TestMotion
     ENDPROC
 
     !========================================================================
-    ! moveTriangle() — slow triangular path good for watching live position
+    ! moveTriangle() - slow triangular path good for watching live position
     !                  updates in the extension's Motion panel.
     !========================================================================
     PROC moveTriangle()
@@ -60,7 +60,7 @@ MODULE TestMotion
     ENDPROC
 
     !========================================================================
-    ! goHome() — quick way to get back to a known pose.
+    ! goHome() - quick way to get back to a known pose.
     !========================================================================
     PROC goHome()
         MoveAbsJ jHome\NoEOffs, v1000, fine, tool0;
@@ -68,7 +68,7 @@ MODULE TestMotion
     ENDPROC
 
     !========================================================================
-    ! resetMotion() — reset counters.
+    ! resetMotion() - reset counters.
     !========================================================================
     PROC resetMotion()
         motionCycles := 0;

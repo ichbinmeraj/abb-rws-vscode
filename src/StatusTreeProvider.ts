@@ -48,7 +48,7 @@ export class StatusTreeProvider implements vscode.TreeDataProvider<Item> {
     const modeIcon = s.opmode   === 'AUTO'       ? 'lock'          : 'unlock';
     const execIcon = s.execstate === 'running'   ? 'circle-filled' : 'circle-outline';
 
-    // State-driven colors — VS Code's `charts.*` and `errorForeground` tokens
+    // State-driven colors - VS Code's `charts.*` and `errorForeground` tokens
     // resolve to good values on every theme (light, dark, high contrast).
     const ctrlColor = s.ctrlstate === 'motoron'                                    ? 'charts.green'
                     : s.ctrlstate === 'guardstop' || s.ctrlstate === 'emergencystop' ? 'errorForeground'
@@ -65,12 +65,12 @@ export class StatusTreeProvider implements vscode.TreeDataProvider<Item> {
       emergencystopreset:  'E-Stop Reset',
       sysfail:             'System Failure',
       init:                'Initialising',
-    }[s.ctrlstate ?? ''] ?? (s.ctrlstate ?? '—');
+    }[s.ctrlstate ?? ''] ?? (s.ctrlstate ?? '-');
 
-    const speedLabel = s.speedRatio !== null ? `${s.speedRatio}%` : '—';
-    const rwVersion = s.systemInfo?.rwVersion ?? '—';
+    const speedLabel = s.speedRatio !== null ? `${s.speedRatio}%` : '-';
+    const rwVersion = s.systemInfo?.rwVersion ?? '-';
     // Prefer systemInfo.name (RAPID system name, consistent across RWS versions)
-    // over identity.name — RWS 1.0 reports the PC hostname there, not the robot.
+    // over identity.name - RWS 1.0 reports the PC hostname there, not the robot.
     const ctrlName = s.systemInfo?.name || s.identity?.name || s.host;
 
     const coldetLabel = s.coldetstate !== null
@@ -81,15 +81,15 @@ export class StatusTreeProvider implements vscode.TreeDataProvider<Item> {
     const items: Item[] = [
       new Item('Host',            ctrlName,        'remote',       undefined,
         `Connected to ${s.host}\nController: ${ctrlName}\nRobotWare: ${rwVersion}`),
-      new Item('RobotWare',       rwVersion,       'versions',     undefined, `System: ${s.systemInfo?.sysid ?? '—'}`),
+      new Item('RobotWare',       rwVersion,       'versions',     undefined, `System: ${s.systemInfo?.sysid ?? '-'}`),
       new Item('Controller',      ctrlLabel,       ctrlIcon,       undefined, `Controller state: ${s.ctrlstate}`, ctrlColor),
-      new Item('Operation Mode',  s.opmode ?? '—', modeIcon,
+      new Item('Operation Mode',  s.opmode ?? '-', modeIcon,
         { title: 'Switch Operation Mode', command: 'abbRobot.setOpMode' },
-        `Mode: ${s.opmode}\n\nClick to switch (VC only — real hardware uses the FlexPendant key switch).`,
+        `Mode: ${s.opmode}\n\nClick to switch (VC only - real hardware uses the FlexPendant key switch).`,
         modeColor),
       new Item('Speed Ratio',     speedLabel,      'dashboard',
         { title: 'Set Speed Ratio', command: 'abbRobot.setSpeedRatio' },
-        'Click to change speed ratio (0–100%). Only works in AUTO mode.',
+        'Click to change speed ratio (0-100%). Only works in AUTO mode.',
         speedColor),
       new Item('RAPID',           s.execstate === 'running' ? 'Running' : 'Stopped',
                                                    execIcon,       undefined, `Execution state: ${s.execstate}`, execColor),

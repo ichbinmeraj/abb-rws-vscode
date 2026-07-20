@@ -86,7 +86,7 @@ export class IoTreeProvider implements vscode.TreeDataProvider<IoTreeItem> {
     if (!element) {
       if (s.ioSignals.length === 0) {
         const item = new vscode.TreeItem(
-          'No signals — click Refresh',
+          'No signals - click Refresh',
           vscode.TreeItemCollapsibleState.None,
         );
         item.iconPath = new vscode.ThemeIcon('info');

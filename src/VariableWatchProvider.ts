@@ -3,7 +3,7 @@ import type { MultiRobotManager } from 'abb-rws-client';
 import { Logger } from './Logger';
 
 /**
- * Variables (Watch) panel — live values for RAPID variables, the way
+ * Variables (Watch) panel - live values for RAPID variables, the way
  * RobotStudio's debugger does it. The user adds a (task, module, symbol)
  * entry to the watch list; we poll its value each refresh tick and surface
  * the result inline.
@@ -50,7 +50,7 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
     private context: vscode.ExtensionContext,
   ) {
     // Watches are per-workspace (different projects watch different robots).
-    // Versions up to 0.9.3 stored them in globalState — migrate those entries
+    // Versions up to 0.9.3 stored them in globalState - migrate those entries
     // the first time a workspace has no list of its own. The global copy is
     // left in place so other workspaces can seed from it too.
     const ws = context.workspaceState.get<WatchEntry[]>(WATCH_STATE_KEY);
@@ -66,7 +66,7 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
     void this.poll();
   }
 
-  /** Read-only snapshot of the current watch entries — used by the
+  /** Read-only snapshot of the current watch entries - used by the
    *  Program webview to render its Watch tab without re-implementing
    *  the polling logic. */
   getEntries(): ReadonlyArray<WatchEntry> {
@@ -168,7 +168,7 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
     const newValue = await vscode.window.showInputBox({
       prompt: `New value for ${entry.module}.${entry.symbol}`,
       value: entry.value ?? '',
-      placeHolder: 'RAPID literal — number, "string", [array], or [record]',
+      placeHolder: 'RAPID literal - number, "string", [array], or [record]',
     });
     if (newValue === undefined) { return; }
     try {
@@ -193,7 +193,7 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
     if (this.watches.length === 0) { this._onDidChange.fire(); return; }
     const now = Date.now();
     if (now - this.lastPollAt < 1000) {
-      // Soon enough — just re-render with current cached values
+      // Soon enough - just re-render with current cached values
       this._onDidChange.fire();
       return;
     }
@@ -225,7 +225,7 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
   private async persist(): Promise<void> {
-    // Strip transient fields (value/error/lastUpdated) before storing — those
+    // Strip transient fields (value/error/lastUpdated) before storing - those
     // are recomputed on every poll and shouldn't bloat the persisted state.
     const stripped = this.watches.map(w => ({ task: w.task, module: w.module, symbol: w.symbol }));
     await this.context.workspaceState.update(WATCH_STATE_KEY, stripped);

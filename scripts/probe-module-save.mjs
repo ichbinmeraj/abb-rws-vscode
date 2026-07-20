@@ -47,7 +47,7 @@ for (const p of PORTS) {
   const r = await req(p, 'GET', '/rw/system');
   if (r.status === 200 || r.status === 401) { port = p; console.log(`✓ controller on :${p} (status ${r.status})`); break; }
 }
-if (!port) { console.log('✗ no RWS 2.0 VC found on common ports — RobotStudio may have reassigned; rerun with a scan'); process.exit(1); }
+if (!port) { console.log('✗ no RWS 2.0 VC found on common ports - RobotStudio may have reassigned; rerun with a scan'); process.exit(1); }
 
 // 2) list modules in T_ROB1
 const mods = await req(port, 'GET', '/rw/rapid/tasks/T_ROB1/modules');
@@ -57,7 +57,7 @@ const mod = names.find(n => !['BASE', 'user', 'DPUSER', 'DPBASE'].includes(n)) ?
 if (!mod) { console.log('✗ no module to test with'); process.exit(1); }
 console.log(`→ testing with module: ${mod}`);
 
-// 3) try save action — live-verified form first (name without extension; the
+// 3) try save action - live-verified form first (name without extension; the
 //    controller appends .modx), legacy guesses kept as fallbacks
 const tmpName = `probe_saved_${mod}`;
 const dest = `${tmpName}.modx`;

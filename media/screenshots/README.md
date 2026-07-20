@@ -3,7 +3,7 @@
 The marketplace README references three images. Capture them, save with these
 exact filenames, then re-package the .vsix.
 
-## 1. `hero.png`  —  Overview / hero shot
+## 1. `hero.png`  -  Overview / hero shot
 
 **Recommended: 1280 × 800 px** (marketplace clamps wider images).
 
@@ -12,7 +12,7 @@ glance: VS Code window, ABB activity bar visible, a `.mod` file open in the
 editor, the side panel showing live cell state.
 
 **Setup**:
-1. Connect to your VC (OmniCore preferred — looks more modern).
+1. Connect to your VC (OmniCore preferred - looks more modern).
 2. Open `samples/MotionTest.mod` in the editor.
 3. Have the **Live Cell** panel expanded showing joints + TCP + state.
 4. Have the **Program** panel showing modules with one expanded to its routines.
@@ -24,11 +24,11 @@ editor, the side panel showing live cell state.
 
 ---
 
-## 2. `program-panel.png`  —  Program panel close-up
+## 2. `program-panel.png`  -  Program panel close-up
 
 **Recommended: 600 × 700 px** (sidebar shape).
 
-Just the Program panel — Modules tab active, status banner visible, tasks &
+Just the Program panel - Modules tab active, status banner visible, tasks &
 modules list with one task expanded showing modules, one module expanded
 showing routines, the **+ New Task** button visible.
 
@@ -40,7 +40,7 @@ showing routines, the **+ New Task** button visible.
 
 ---
 
-## 3. `editor-live.png`  —  Editor with live features
+## 3. `editor-live.png`  -  Editor with live features
 
 **Recommended: 1280 × 600 px**.
 
@@ -62,7 +62,7 @@ A `.mod` file open with multiple live features visible:
 ## After capturing all three
 
 1. Save as `hero.png`, `program-panel.png`, `editor-live.png` in this folder.
-2. Verify with: `ls D:/abb-rws-vscode/media/screenshots/` — you should see 3 PNGs + this README.
+2. Verify with: `ls D:/abb-rws-vscode/media/screenshots/` - you should see 3 PNGs + this README.
 3. Re-package: `cd D:/abb-rws-vscode && rm -f abb-rws-0.9.2.vsix && npx vsce package --no-dependencies`
 4. Smoke-test: `code --install-extension D:/abb-rws-vscode/abb-rws-0.9.2.vsix --force` then check Extensions → @installed → "RAPID Live" → click it to see the README rendered with images.
 

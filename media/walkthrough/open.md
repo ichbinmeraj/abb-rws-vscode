@@ -18,8 +18,8 @@ The editor gets:
 - Syntax highlighting for `.mod` / `.sys` / `.prg` files
 - **Hover docs** for every documented RAPID instruction (705 entries from
   the official ABB Technical Reference Manual)
-- **Live variable hover** — hover any variable name to see its current
+- **Live variable hover** - hover any variable name to see its current
   controller value
-- **Inlay hints** — faded gray live values next to every `VAR` / `PERS` / `CONST`
+- **Inlay hints** - faded gray live values next to every `VAR` / `PERS` / `CONST`
 - **Program-pointer arrow** in the gutter at the line currently executing
-- **Go to Definition** — Ctrl+click a routine name to jump to its declaration
+- **Go to Definition** - Ctrl+click a routine name to jump to its declaration

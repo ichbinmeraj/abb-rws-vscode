@@ -1,4 +1,4 @@
-# RWS 1.0 Full Parity Plan — `abb-rws-client@0.6.0`
+# RWS 1.0 Full Parity Plan - `abb-rws-client@0.6.0`
 
 **Goal**: bring `RWS1Adapter` to the same ~115-method surface as `RWS2Adapter` so
 the extension behaves identically on IRC5 / RobotWare 6 and OmniCore / RobotWare 7.
@@ -25,13 +25,13 @@ parse the JSON `_embedded._state` envelope, return typed result.
    methods that handle all the digest/cookie/queue complexity).
 2. Lets us add controller-side endpoints rapidly without bloating the library.
 3. Mirrors how the RWS 2.0 adapter already works (raw `req()` + custom parsing).
-4. Easier to iterate — bug fixes don't require repackaging the npm tgz.
+4. Easier to iterate - bug fixes don't require repackaging the npm tgz.
 
 ---
 
-## Coverage matrix — all 120+ endpoints
+## Coverage matrix - all 120+ endpoints
 
-### Stage 1 — System detail (5 methods)
+### Stage 1 - System detail (5 methods)
 
 | Method | Endpoint | Source |
 |---|---|---|
@@ -41,7 +41,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `getEnergyStats` | `GET /rw/system/energy?json=1` | Doc 6.8 |
 | `listSystemOptions` | `GET /rw/system/options?json=1` | Doc 6.8 |
 
-### Stage 2 — Return codes & devices (3)
+### Stage 2 - Return codes & devices (3)
 
 | Method | Endpoint |
 |---|---|
@@ -49,7 +49,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `listAllReturnCodes` | `GET /rw/retcode?json=1` |
 | `listDevices` | `GET /rw/devices?json=1` |
 
-### Stage 3 — RAPID detail (10)
+### Stage 3 - RAPID detail (10)
 
 | Method | Endpoint |
 |---|---|
@@ -64,7 +64,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `startProductionMode` | `POST /rw/rapid/execution?action=start-prod&json=1` |
 | `holdToRun(task, action)` | `POST /rw/rapid/tasks/{task}?action=holdtorun&json=1` |
 
-### Stage 4 — RAPID breakpoints (4)
+### Stage 4 - RAPID breakpoints (4)
 
 | Method | Endpoint |
 |---|---|
@@ -73,7 +73,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `removeBreakpoint(task, module, row, col?)` | `DELETE .../breakpoints/{id}?json=1` |
 | `clearBreakpoints(task)` | `POST .../breakpoints?action=clear&json=1` |
 
-### Stage 5 — Motion detail (12)
+### Stage 5 - Motion detail (12)
 
 | Method | Endpoint |
 |---|---|
@@ -91,7 +91,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `setNonMotionExecution(on)` | `POST .../nonmotionexecution?action=set&json=1` |
 | `calcCartesianFromJoints` (FK) | `POST .../mechunits/{u}?action=CalcPoseFromJoints&json=1` |
 
-### Stage 6 — CFG database (9 — the big one)
+### Stage 6 - CFG database (9 - the big one)
 
 | Method | Endpoint |
 |---|---|
@@ -105,7 +105,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `loadCfgFile(filepath, action)` | `POST /rw/cfg?action=load&json=1` |
 | `validateCfgFile(filepath)` | `POST /rw/cfg?action=validate&json=1` |
 
-### Stage 7 — Backup / Restore / Compress / Diagnostics (10)
+### Stage 7 - Backup / Restore / Compress / Diagnostics (10)
 
 | Method | Endpoint |
 |---|---|
@@ -119,7 +119,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `listProgress` | `GET /progress?json=1` |
 | `getProgress(id)` | `GET /progress/{id}?json=1` |
 
-### Stage 8 — DIPC (6)
+### Stage 8 - DIPC (6)
 
 | Method | Endpoint |
 |---|---|
@@ -130,7 +130,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `readDipcMessage(queue)` | `GET /rw/dipc/{queue}?action=read&json=1` |
 | `removeDipcQueue(name)` | `DELETE /rw/dipc/{queue}?json=1` |
 
-### Stage 9 — Safety controller (5)
+### Stage 9 - Safety controller (5)
 
 | Method | Endpoint |
 |---|---|
@@ -140,7 +140,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `getSafetyConfigStatus` | `GET /ctrl/safety/config-status?json=1` |
 | `loadSafetyConfig(filepath)` | `POST /ctrl/safety?action=load&json=1` |
 
-### Stage 10 — Virtual time (3, VC-only)
+### Stage 10 - Virtual time (3, VC-only)
 
 | Method | Endpoint |
 |---|---|
@@ -148,7 +148,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `setVirtualTimeRunning(bool)` | `POST /ctrl/virtualtime/vtrun?json=1` |
 | `setVirtualTimeSpeed(scale)` | `POST /ctrl/virtualtime/vtspeed?action=set&json=1` |
 
-### Stage 11 — Integrated Vision (5)
+### Stage 11 - Integrated Vision (5)
 
 | Method | Endpoint |
 |---|---|
@@ -158,7 +158,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `restartVisionCamera(camera)` | `POST /rw/vision/{camera}?action=restart&json=1` |
 | `flashVisionLeds(camera)` | `POST /rw/vision/{camera}?action=flash&json=1` |
 
-### Stage 12 — RMMP (3)
+### Stage 12 - RMMP (3)
 
 | Method | Endpoint |
 |---|---|
@@ -166,7 +166,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `requestRmmp(level)` | `POST /users/rmmp?action=request&json=1` |
 | `pollRmmpGrant` | `GET /users/rmmp/poll?json=1` |
 
-### Stage 13 — Network / Time / Compatibility (8)
+### Stage 13 - Network / Time / Compatibility (8)
 
 | Method | Endpoint |
 |---|---|
@@ -179,24 +179,24 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `getTimeServer` | `GET /ctrl/clock/timeserver?json=1` |
 | `getCompatibility` | `GET /ctrl/compatible?json=1` |
 
-### Stage 14 — Set mechunit / robtarget for jogging (2)
+### Stage 14 - Set mechunit / robtarget for jogging (2)
 
 | Method | Endpoint |
 |---|---|
 | `setMechunitForJogging(unit)` | `POST /rw/motionsystem?action=set-mechunit&json=1` |
 | `setRobtargetForJogging(target)` | `POST /rw/motionsystem?action=set-target&json=1` |
 
-### Stage 15 — High-priority subscriptions (architectural)
+### Stage 15 - High-priority subscriptions (architectural)
 
 Convert per-signal and per-persvar subscriptions to use `priority=2` (high) so
 they get sub-200ms updates. Currently we use `priority=1` (medium, ~200ms-1s).
 
 ---
 
-## Implementation order — what we ship now vs later
+## Implementation order - what we ship now vs later
 
 **This session**: Add `request()` helper to `abb-rws-client@0.6.0`, then
-implement Stages 1, 2, 3, 4, 5, 6 (44 methods) in `RWS1Adapter` — the highest
+implement Stages 1, 2, 3, 4, 5, 6 (44 methods) in `RWS1Adapter` - the highest
 visible value. CFG editor + system detail + RAPID/motion detail.
 
 **Follow-up session**: Stages 7-15 (~30 more methods).

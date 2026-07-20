@@ -9,7 +9,7 @@ import { Logger } from './Logger';
  *
  * Backed by a static JSON database extracted from ABB's
  * "RAPID Instructions, Functions and Data types" reference manual
- * (3HAC050917-001 Rev F) — 666 entries covering every documented
+ * (3HAC050917-001 Rev F) - 666 entries covering every documented
  * instruction, function, and data type.
  *
  * Hover behavior:
@@ -39,7 +39,7 @@ function loadDb(extensionRoot: string): Record<string, RapidEntry> {
   try {
     const raw = fs.readFileSync(p, 'utf-8');
     DB = JSON.parse(raw) as Record<string, RapidEntry>;
-    Logger.info(`RAPID language DB loaded — ${Object.keys(DB).length} entries`);
+    Logger.info(`RAPID language DB loaded - ${Object.keys(DB).length} entries`);
     return DB;
   } catch (e) {
     Logger.error(`failed to load RAPID language DB at ${p}`, e);
@@ -49,7 +49,7 @@ function loadDb(extensionRoot: string): Record<string, RapidEntry> {
 }
 
 /**
- * Cache for live-value lookups so hovering doesn't hammer the controller —
+ * Cache for live-value lookups so hovering doesn't hammer the controller -
  * the hover provider fires every time the cursor moves over a token.
  * 800 ms TTL: long enough to absorb hover-tooltip-flicker, short enough that
  * a running program's variable values look "alive".
@@ -69,7 +69,7 @@ export class RapidHoverProvider implements vscode.HoverProvider {
     if (!range) { return null; }
     const word = document.getText(range);
 
-    // 1. Static language DB — instructions, functions, data types
+    // 1. Static language DB - instructions, functions, data types
     const db = loadDb(this.extensionRoot);
     const entry = db[word.toLowerCase()];
     if (entry) { return new vscode.Hover(this.render(entry), range); }
@@ -123,7 +123,7 @@ export class RapidHoverProvider implements vscode.HoverProvider {
     const md = new vscode.MarkdownString();
     md.isTrusted = false;
     md.supportHtml = true;
-    md.appendMarkdown(`**\`${moduleName}.${symbol}\`** — _live value_\n\n`);
+    md.appendMarkdown(`**\`${moduleName}.${symbol}\`** - _live value_\n\n`);
     if (live.value !== undefined) {
       const trimmed = live.value.length > 200 ? live.value.slice(0, 200) + '…' : live.value;
       md.appendCodeblock(trimmed, 'rapid');
@@ -149,7 +149,7 @@ export class RapidHoverProvider implements vscode.HoverProvider {
                     : e.kind === 'function'    ? 'Function'
                     : e.kind === 'keyword'     ? 'Keyword'
                     : 'Data type';
-    md.appendMarkdown(`**\`${e.name}\`** — _${kindLabel}_\n\n`);
+    md.appendMarkdown(`**\`${e.name}\`** - _${kindLabel}_\n\n`);
 
     // Brief description (one-liner from the manual's TOC)
     if (e.brief) {
@@ -168,15 +168,15 @@ export class RapidHoverProvider implements vscode.HoverProvider {
       md.appendCodeblock(e.examples[0], 'rapid');
     }
 
-    // Footer — credit the extension + cite the source manual.
+    // Footer - credit the extension + cite the source manual.
     // ABB users may need to verify against newer manual revisions in their RobotWare version,
     // so we link out to the Developer Center landing page as well.
     md.appendMarkdown(
       `\n---\n` +
       `<small>` +
-      `From **ABB Technical Reference Manual** — _RAPID Instructions, Functions and Data types_, ` +
+      `From **ABB Technical Reference Manual** - _RAPID Instructions, Functions and Data types_, ` +
       `[3HAC050917-001 Rev F](https://library.abb.com/r?dkey=3HAC050917-001). ` +
-      `Surfaced by **RAPID Live — ABB Robotics for VS Code**.` +
+      `Surfaced by **RAPID Live - ABB Robotics for VS Code**.` +
       `</small>`,
     );
     md.supportHtml = true;

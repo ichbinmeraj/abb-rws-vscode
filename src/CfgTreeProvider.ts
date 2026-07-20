@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { MultiRobotManager } from 'abb-rws-client';
 
 /**
- * Configuration database tree provider — visualizes /rw/cfg as a 4-level tree:
+ * Configuration database tree provider - visualizes /rw/cfg as a 4-level tree:
  *   Domain (EIO/MMC/MOC/PROC/SIO/SYS) → Type → Instance → Attributes
  *
  * Lazy-loaded: each level fetches on expand, so the controller isn't hit until
@@ -67,7 +67,7 @@ export class CfgTreeProvider implements vscode.TreeDataProvider<CfgNode> {
     }
 
     try {
-      // Top level — list domains
+      // Top level - list domains
       if (!element) {
         const domains = await m.listCfgDomains();
         if (domains.length === 0) {

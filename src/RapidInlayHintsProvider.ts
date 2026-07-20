@@ -13,7 +13,7 @@ import type { RapidLanguageIndex } from './RapidLanguageIndex';
  * The hints are pulled from the controller in the background with a short
  * cache; the editor view updates within a few seconds as values change on
  * the running robot. This is what makes "RAPID Live" actually feel live
- * inside the editor — RobotStudio doesn't have an equivalent.
+ * inside the editor - RobotStudio doesn't have an equivalent.
  *
  * Implementation:
  *  - We re-use the workspace symbol index to know which lines have decls.
@@ -24,7 +24,7 @@ import type { RapidLanguageIndex } from './RapidLanguageIndex';
  *  - Failures are cached too so unreadable symbols don't get re-tried on
  *    every viewport change.
  *  - The provider fires its own onDidChange every 1.5s while connected
- *    so VS Code re-asks for hints — this is what makes the values appear
+ *    so VS Code re-asks for hints - this is what makes the values appear
  *    to update without user interaction.
  */
 
@@ -88,7 +88,7 @@ export class RapidInlayHintsProvider implements vscode.InlayHintsProvider, vscod
       const hint = new vscode.InlayHint(lineEnd, ` → ${display}`, vscode.InlayHintKind.Type);
       hint.paddingLeft = true;
       hint.tooltip = new vscode.MarkdownString(
-        `**${sym.containerModule}.${sym.name}** — live from ${taskName}\n\n` +
+        `**${sym.containerModule}.${sym.name}** - live from ${taskName}\n\n` +
         '```rapid\n' + live.value + '\n```',
       );
       hints.push(hint);

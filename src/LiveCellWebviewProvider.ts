@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { MultiRobotManager } from 'abb-rws-client';
 
 /**
- * "Live Cell" panel — a compact webview-based dashboard summarizing the
+ * "Live Cell" panel - a compact webview-based dashboard summarizing the
  * connected robot's runtime state in one glance:
  *
  *   ┌─ Live Cell ──────────────────┐
@@ -23,7 +23,7 @@ import type { MultiRobotManager } from 'abb-rws-client';
  *   │ tool: weldGun · wobj: wobj0  │
  *   └──────────────────────────────┘
  *
- * Read-only — buttons / commands stay in the existing tree views and CodeLens.
+ * Read-only - buttons / commands stay in the existing tree views and CodeLens.
  * This is purely an at-a-glance summary that updates ~once per second via
  * the manager's onDidChange event.
  *
@@ -53,7 +53,7 @@ export class LiveCellWebviewProvider implements vscode.WebviewViewProvider {
 
   constructor(private readonly multi: MultiRobotManager) {
     // Push state to the webview on every manager change. The provider
-    // outlives any single view instance — when the user collapses then
+    // outlives any single view instance - when the user collapses then
     // re-expands the panel, resolveWebviewView re-fires and we reattach.
     multi.onDidChange(() => this.postState());
   }
@@ -86,7 +86,7 @@ export class LiveCellWebviewProvider implements vscode.WebviewViewProvider {
     };
     void this.view.webview.postMessage({ type: 'state', data: state });
     // Suppress unused-var warning; `active` is reserved for future per-robot
-    // extras (tool, wobj — currently in state.modules collateral).
+    // extras (tool, wobj - currently in state.modules collateral).
     void active;
   }
 
@@ -228,37 +228,37 @@ export class LiveCellWebviewProvider implements vscode.WebviewViewProvider {
   <div class="section">
     <div class="section-title">Joints (degrees)</div>
     <div class="joints">
-      <div class="joint"><span class="joint-name">J1</span><span class="joint-val dimmed" id="j1">—</span></div>
-      <div class="joint"><span class="joint-name">J2</span><span class="joint-val dimmed" id="j2">—</span></div>
-      <div class="joint"><span class="joint-name">J3</span><span class="joint-val dimmed" id="j3">—</span></div>
-      <div class="joint"><span class="joint-name">J4</span><span class="joint-val dimmed" id="j4">—</span></div>
-      <div class="joint"><span class="joint-name">J5</span><span class="joint-val dimmed" id="j5">—</span></div>
-      <div class="joint"><span class="joint-name">J6</span><span class="joint-val dimmed" id="j6">—</span></div>
+      <div class="joint"><span class="joint-name">J1</span><span class="joint-val dimmed" id="j1">-</span></div>
+      <div class="joint"><span class="joint-name">J2</span><span class="joint-val dimmed" id="j2">-</span></div>
+      <div class="joint"><span class="joint-name">J3</span><span class="joint-val dimmed" id="j3">-</span></div>
+      <div class="joint"><span class="joint-name">J4</span><span class="joint-val dimmed" id="j4">-</span></div>
+      <div class="joint"><span class="joint-name">J5</span><span class="joint-val dimmed" id="j5">-</span></div>
+      <div class="joint"><span class="joint-name">J6</span><span class="joint-val dimmed" id="j6">-</span></div>
     </div>
   </div>
 
   <div class="section">
     <div class="section-title">TCP position (mm) + quaternion</div>
     <div class="tcp" id="tcp">
-      <div><span class="label">X</span> <span id="tcp-x">—</span> &nbsp; <span class="label">Y</span> <span id="tcp-y">—</span> &nbsp; <span class="label">Z</span> <span id="tcp-z">—</span></div>
-      <div><span class="label">Q</span> <span id="tcp-q">—</span></div>
+      <div><span class="label">X</span> <span id="tcp-x">-</span> &nbsp; <span class="label">Y</span> <span id="tcp-y">-</span> &nbsp; <span class="label">Z</span> <span id="tcp-z">-</span></div>
+      <div><span class="label">Q</span> <span id="tcp-q">-</span></div>
     </div>
   </div>
 
   <div class="section">
     <div class="section-title">Active task</div>
     <div class="meta">
-      <div class="meta-row"><span class="k">Task</span><span id="task">—</span></div>
-      <div class="meta-row"><span class="k">Modules</span><span id="modules">—</span></div>
-      <div class="meta-row"><span class="k">RobotWare</span><span id="rw">—</span></div>
+      <div class="meta-row"><span class="k">Task</span><span id="task">-</span></div>
+      <div class="meta-row"><span class="k">Modules</span><span id="modules">-</span></div>
+      <div class="meta-row"><span class="k">RobotWare</span><span id="rw">-</span></div>
     </div>
   </div>
 
-  <div class="footer" id="footer-host">—</div>
+  <div class="footer" id="footer-host">-</div>
 
   <script>
     const $ = (id) => document.getElementById(id);
-    const fmt = (n, decimals = 1) => (typeof n === 'number' ? n.toFixed(decimals) : '—');
+    const fmt = (n, decimals = 1) => (typeof n === 'number' ? n.toFixed(decimals) : '-');
 
     function setJoint(id, n) {
       const el = $(id);
@@ -266,7 +266,7 @@ export class LiveCellWebviewProvider implements vscode.WebviewViewProvider {
         el.textContent = fmt(n) + '°';
         el.classList.remove('dimmed');
       } else {
-        el.textContent = '—';
+        el.textContent = '-';
         el.classList.add('dimmed');
       }
     }
@@ -283,7 +283,7 @@ export class LiveCellWebviewProvider implements vscode.WebviewViewProvider {
       banner.classList.add('connected');
       const exec = (state.execstate || '').toLowerCase();
       const ctrl = (state.ctrlstate || '').toLowerCase();
-      let dotClass = 'gray', label = exec.toUpperCase() || '—';
+      let dotClass = 'gray', label = exec.toUpperCase() || '-';
       if (ctrl === 'guardstop' || ctrl === 'emergencystop') {
         banner.classList.add(ctrl);
         dotClass = 'red';
@@ -326,13 +326,13 @@ export class LiveCellWebviewProvider implements vscode.WebviewViewProvider {
       $('tcp-x').textContent = fmt(c.x);
       $('tcp-y').textContent = fmt(c.y);
       $('tcp-z').textContent = fmt(c.z);
-      const q = [c.q1, c.q2, c.q3, c.q4].map(v => typeof v === 'number' ? v.toFixed(3) : '—');
+      const q = [c.q1, c.q2, c.q3, c.q4].map(v => typeof v === 'number' ? v.toFixed(3) : '-');
       $('tcp-q').textContent = '[' + q.join(', ') + ']';
 
       // Meta
-      $('task').textContent    = s.activeTask ? (s.activeTask + (s.taskCount > 1 ? ' (' + s.taskCount + ' tasks)' : '')) : '—';
-      $('modules').textContent = s.loadedModules && s.loadedModules.length ? s.loadedModules.join(', ') : '—';
-      $('rw').textContent      = s.rwVersion || '—';
+      $('task').textContent    = s.activeTask ? (s.activeTask + (s.taskCount > 1 ? ' (' + s.taskCount + ' tasks)' : '')) : '-';
+      $('modules').textContent = s.loadedModules && s.loadedModules.length ? s.loadedModules.join(', ') : '-';
+      $('rw').textContent      = s.rwVersion || '-';
 
       // Footer
       $('footer-host').textContent = s.connected ? ('Connected to ' + (s.host || '?')) : 'No robot connected';

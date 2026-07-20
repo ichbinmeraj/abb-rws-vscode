@@ -1,4 +1,4 @@
-// Comprehensive RWS 2.0 *write* verification — every modify endpoint, restored.
+// Comprehensive RWS 2.0 *write* verification - every modify endpoint, restored.
 // Auto-detects the OmniCore VC port. Each test restores controller state.
 // Safe to run repeatedly. Requires AUTO mode for full coverage.
 //
@@ -63,7 +63,7 @@ async function findBase() {
   // Establish session cookie
   await req('GET', PORT, '/rw/system');
   if (!session.cookie) {
-    console.error("No session cookie issued — auth may have failed.");
+    console.error("No session cookie issued - auth may have failed.");
     process.exit(1);
   }
 
@@ -117,7 +117,7 @@ async function findBase() {
     return `privilege=${rmmpPrivilege}`;
   });
 
-  // Detect orphan 'edit' mastership — if we can't acquire it cleanly, an
+  // Detect orphan 'edit' mastership - if we can't acquire it cleanly, an
   // earlier session is still holding it. The controller can take many
   // minutes to time out (maybe never, until VC restart). Mark this so we
   // skip mastership-dependent tests with a clear message instead of failing.
@@ -125,7 +125,7 @@ async function findBase() {
   await test("probe edit mastership availability", async () => {
     const r = await req('POST', PORT, '/rw/mastership/edit/request', '');
     if (r.status === 204) {
-      // Got it — release immediately so individual tests can re-acquire
+      // Got it - release immediately so individual tests can re-acquire
       await req('POST', PORT, '/rw/mastership/edit/release', '');
       editAvailable = true;
       return "available";
@@ -139,7 +139,7 @@ async function findBase() {
         editAvailable = true;
         return "available (after force release)";
       }
-      throw new Error("orphan mastership — restart OmniCore VC to clear");
+      throw new Error("orphan mastership - restart OmniCore VC to clear");
     }
     throw new Error(`HTTP ${r.status}`);
   });
@@ -148,13 +148,13 @@ async function findBase() {
   const canModify = (inAuto || rmmpPrivilege === "modify" || rmmpPrivilege === "exclusive") && editAvailable;
   console.log("");
   if (!canModify) {
-    console.log(`⚠️  opmode=${initialState.opmode}, RMMP=${rmmpPrivilege}, editMastership=${editAvailable} — mastership-required tests will SKIP.`);
+    console.log(`⚠️  opmode=${initialState.opmode}, RMMP=${rmmpPrivilege}, editMastership=${editAvailable} - mastership-required tests will SKIP.`);
   } else {
-    console.log(`✓  opmode=${initialState.opmode}, RMMP=${rmmpPrivilege}, edit available — full write tests will run.`);
+    console.log(`✓  opmode=${initialState.opmode}, RMMP=${rmmpPrivilege}, edit available - full write tests will run.`);
   }
   console.log("");
 
-  // Always logout on exit — `GET /logout` releases mastership + subscriptions
+  // Always logout on exit - `GET /logout` releases mastership + subscriptions
   // held by this session. Live-verified: prevents orphan mastership locks
   // that would block the next test run for several minutes.
   let cleanupHooked = false;
@@ -302,7 +302,7 @@ async function findBase() {
     try {
       // Stop RAPID first to prevent symbol-table corruption
       await req('POST', PORT, '/rw/rapid/execution/stop', 'stopmode=stop');
-      // Load module — RWS 2.0 path-based action
+      // Load module - RWS 2.0 path-based action
       const r = await req('POST', PORT, '/rw/rapid/tasks/T_ROB1/loadmod', 'modulepath=HOME/TestExtension.mod&replace=true');
       if (r.status >= 400) throw new Error(`HTTP ${r.status}: ${(xspan(r.body,'msg')||'').slice(0,90)}`);
       modLoaded = true;
@@ -325,7 +325,7 @@ async function findBase() {
   console.log(" RAPID variable writes");
   console.log("═".repeat(70));
 
-  // RWS 2.0 OmniCore symbol API: suffix-style — /rw/rapid/symbol/{symburl}/{data|properties}
+  // RWS 2.0 OmniCore symbol API: suffix-style - /rw/rapid/symbol/{symburl}/{data|properties}
   // (RWS 1.0 uses prefix-style: /rw/rapid/symbol/{data|properties}/{symburl})
   let dynSymbolsReadable = false;
   let originalCounter;
@@ -532,7 +532,7 @@ async function findBase() {
     return `HTTP ${r.status}`;
   });
 
-  // Clean session shutdown — logout releases mastership and subscriptions.
+  // Clean session shutdown - logout releases mastership and subscriptions.
   await req('GET', PORT, '/logout').catch(() => {});
 
   // ─── Final report ────────────────────────────────────────────────────────
@@ -542,7 +542,7 @@ async function findBase() {
 
   if (skipped.length) {
     console.log("\nSkipped:");
-    for (const s of skipped) console.log(`  ⊘ ${s.label} — ${s.reason}`);
+    for (const s of skipped) console.log(`  ⊘ ${s.label} - ${s.reason}`);
   }
 
   if (failed.length === 0) {

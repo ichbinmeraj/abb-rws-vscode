@@ -1,4 +1,4 @@
-// Comprehensive verification — exercises every adapter method & reports failures
+// Comprehensive verification - exercises every adapter method & reports failures
 // Env: RWS2_URL RWS_USER RWS_PASS (see scripts/lib/probe-common.mjs)
 import { RWS2_URL, makeSession } from './scripts/lib/probe-common.mjs';
 
@@ -29,7 +29,7 @@ const pass = [], fail = [];
 function check(name, ok, hint) {
   (ok ? pass : fail).push({ name, hint });
   process.stdout.write(ok ? '.' : 'F');
-  if (!ok) console.log(`\n  ✗ ${name}${hint ? ' — ' + hint : ''}`);
+  if (!ok) console.log(`\n  ✗ ${name}${hint ? ' - ' + hint : ''}`);
 }
 
 (async () => {
@@ -288,7 +288,7 @@ function check(name, ok, hint) {
   console.log('═'.repeat(70));
   if (fail.length) {
     console.log('\nFailures:');
-    for (const f of fail) console.log(`  ✗ ${f.name}${f.hint ? ' — ' + f.hint : ''}`);
+    for (const f of fail) console.log(`  ✗ ${f.name}${f.hint ? ' - ' + f.hint : ''}`);
   } else {
     console.log('\n🎉 All ' + pass.length + ' checks pass!');
   }

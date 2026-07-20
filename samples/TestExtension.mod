@@ -1,8 +1,8 @@
 MODULE TestExtension(SYSMODULE)
     !========================================================================
-    ! TestExtension.mod — minimal test module for the RAPID Live extension.
+    ! TestExtension.mod - minimal test module for the RAPID Live extension.
     ! Compatible with both IRC5 (RobotWare 6) and OmniCore (RobotWare 7).
-    ! No I/O signals, no dnum, no complex literals — just core RAPID.
+    ! No I/O signals, no dnum, no complex literals - just core RAPID.
     !========================================================================
 
     VAR num     counter := 0;
@@ -20,7 +20,7 @@ MODULE TestExtension(SYSMODULE)
     ! standalone (i.e. when no other ProgMod with a `main` is loaded).
     !
     ! NOTE on coexistence with OmniCore's default Module1:
-    ! Both modules cannot define `main` simultaneously — RWS 2.0 rejects PP-to-Main
+    ! Both modules cannot define `main` simultaneously - RWS 2.0 rejects PP-to-Main
     ! with SYS_CTRL_E_RAPID_SEMANTIC_ERROR (-1073442802) when there's a duplicate
     ! main. If you have Module1 loaded, either unload it first ("Modules" panel
     ! → right-click Module1 → Unload), or use the `testCounterLoop`-style routines
