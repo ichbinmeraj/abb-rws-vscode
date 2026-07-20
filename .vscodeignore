@@ -21,7 +21,11 @@ dist/*.map
 # `.controller.mod` file is an orphan from earlier dev work, exclude.
 samples/MotionTest.controller.mod
 
-# Internal docs and plans
+# Internal docs and plans — ship only the marketplace-facing root markdown
+*.md
+!README.md
+!CHANGELOG.md
+!SECURITY.md
 docs/**
 samples/TEST_PLAN.md
 
