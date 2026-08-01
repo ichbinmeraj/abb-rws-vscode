@@ -19,7 +19,7 @@ auto-detected from the controller's auth challenge.
 - **Tasks panel** - every RAPID task with its modules and routines. One-click run, set PP, unload. Create new tasks (writes `SYS/CAB_TASKS` in CFG).
 - **Variables Watch** - pin variables, see live values poll every 1 s.
 - **Multi-robot** - one window, many controllers, switch active in a click.
-- Plus: file system browser, I/O signal control, event log with details, CFG read+write, backup / restore, service-routine call, IK + FK, and ~90 commands covering the full RWS surface.
+- Plus: file system browser, I/O signal control, event log with details, CFG read+write, backup / restore, service-routine call, IK + FK, and 100+ commands covering the full RWS surface.
 
 ---
 
