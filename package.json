@@ -1217,7 +1217,7 @@
     "package": "npx vsce package"
   },
   "dependencies": {
-    "abb-rws-client": "file:vendor/abb-rws-client-1.0.0.tgz"
+    "abb-rws-client": "file:vendor/abb-rws-client-1.1.0.tgz"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
