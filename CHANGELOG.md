@@ -25,6 +25,10 @@ IRC5 RW6.16 + OmniCore RW7.21/RW8.1.1.
   `ws` CVE bump, typed errors on every search path, silent-socket RWS 2.0
   subscription liveness (no more 25 s self-disconnect loop).
 
+### Coming next
+
+- **Robot panel** - a dedicated interactive panel view (jog, I/O, signal search, production monitoring) is in active development.
+
 
 ## 1.0.0 - 2026-07-11 - Network discovery, secure credentials, simulation panel
 

@@ -2,12 +2,10 @@
 
 > The first VS Code extension that connects directly to a live ABB controller.
 
-**Live-tested on RobotWare 7.21 (OmniCore) and RobotWare 6.16 (IRC5).**
+**Live-tested on RobotWare 8.1 and 7.21 (OmniCore) and RobotWare 6.16 (IRC5).**
 Works against real hardware and RobotStudio virtual controllers, with both
 **RWS 1.0** (HTTP Digest, IRC5) and **RWS 2.0** (HTTPS Basic + XHTML, OmniCore)
 auto-detected from the controller's auth challenge.
-
-<!-- Screenshots coming in 0.9.3 -->
 
 ---
 
@@ -27,7 +25,7 @@ auto-detected from the controller's auth challenge.
 
 1. Install from the marketplace.
 2. Click the **RAPID Live** icon in the activity bar → **+ Add Robot**.
-3. The wizard auto-scans `127.0.0.1` and `192.168.125.1`. RobotStudio VCs use random ports - those are detected automatically.
+3. The wizard finds every controller for you: RobotStudio VCs are detected in about a second whatever random port they landed on, real robots on the standard service address, and anything announcing over mDNS/Bonjour.
 4. Default credentials: `Admin` / `robotics` (recommended; works on most controllers). Falls back to `Default User` automatically on IRC5 if `Admin` doesn't exist.
 5. Right-click your robot → **Connect**.
 
@@ -121,10 +119,10 @@ ABB designed certain things to be impossible from a remote interface. We probed 
 - **Override the FlexPendant key switch on real hardware** - physical safety interlock.
 - **Jog from AUTO mode** - forbidden by ISO 10218.
 
-Coming in 0.10+:
+Coming soon:
 
+- **Robot panel** - a dedicated interactive panel view for the whole cell: jog, I/O at a glance, signal search, production monitoring. In active development.
 - Step debugging UI (Step Into / Over / Out + breakpoint sync).
-- WebSocket-based real-time state on RWS 2.0 (currently 1 s polling).
 - Hot-edit / ModPos in a running program.
 
 ---
