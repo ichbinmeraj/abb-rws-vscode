@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.1.0 - 2026-08-12 - Client 1.3.0: discovery that finds every controller, full RWS surface
+
+No extension code changes - this release ships the substantially upgraded
+`abb-rws-client` 1.3.0 underneath. Everything below is live-verified against
+IRC5 RW6.16 + OmniCore RW7.21/RW8.1.1.
+
+### Changed
+
+- **Controller discovery finds every local VC, fast.** Discovery now asks the
+  OS which ports are actually listening and probes those, instead of guessing
+  from a fixed port list with a capped blind scan. Concretely: a RobotStudio
+  VC on a randomly-assigned high port (they drift on every restart - 40483 and
+  62214 observed) is now found; previously a VC on a standard port would hide
+  any second VC on a non-standard one. A full local discovery takes ~1.5 s and
+  works on non-English Windows (the netstat parse no longer depends on the
+  localized "LISTENING" word).
+- **Complete RWS endpoint surface in the bundled client.** Signal search,
+  I/O device search, module-text read, file rename, event-log export, RMMP
+  poll/cancel and more now work on BOTH generations (many were RWS 2.0-only or
+  missing) - groundwork for upcoming extension features. Client conformance:
+  59 implemented / 0 unmapped / 0 orphan against live controllers.
+- **Reliability hardening under the hood:** secret redaction in trace logs,
+  `ws` CVE bump, typed errors on every search path, silent-socket RWS 2.0
+  subscription liveness (no more 25 s self-disconnect loop).
+
+
 ## 1.0.0 - 2026-07-11 - Network discovery, secure credentials, simulation panel
 
 The first stable release. Everything below is live-verified against both
