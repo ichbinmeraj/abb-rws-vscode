@@ -884,6 +884,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
             <span class="type-badge">\${escapeHtml(m.type)}</span>
             <span class="row-actions">
               <button data-act="open"   data-name="\${escapeHtml(m.name)}">Open</button>
+              <button data-act="text"   data-name="\${escapeHtml(m.name)}" title="Module text with the controller's change count">Text</button>
               \${sys ? '' : \`
                 <button data-act="setpp"  data-name="\${escapeHtml(m.name)}">Set PP</button>
                 <button data-act="unload" data-name="\${escapeHtml(m.name)}">Unload</button>
@@ -1004,6 +1005,7 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
           const name = btn.dataset.name;
           const act = btn.dataset.act;
           if (act === 'open')   cmd('abbRobot.openModuleSource', name);
+          if (act === 'text')   cmd('abbRobot.viewModuleText', name);
           if (act === 'setpp')  cmd('abbRobot.setPPToRoutine', name);
           if (act === 'unload') cmd('abbRobot.unloadModule', name);
         });

@@ -106,9 +106,15 @@ export class IoTreeProvider implements vscode.TreeDataProvider<IoTreeItem> {
       return [item];
     }
 
-    // Expanded search group: the pinned server-side results
+    // Expanded search group: the pinned server-side results. Prefer the LIVE
+    // signal object from the polled snapshot when one exists - the frozen
+    // search-time copy never updates, so rendering (and the toggle command,
+    // which computes the write from lvalue) would act on stale values.
     if (element instanceof SearchGroupItem) {
-      return (this.searchResults ?? []).map(sig => new SignalItem(sig));
+      return (this.searchResults ?? []).map(sig => {
+        const live = s.ioSignals.find(x => x.name === sig.name && x.type === sig.type);
+        return new SignalItem(live ?? sig);
+      });
     }
 
     // Root: pinned search group (if any), then the type groups

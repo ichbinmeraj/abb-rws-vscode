@@ -717,7 +717,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(sbConn, sbMode, sbExec);
 
   // Refresh all views on any state change
+  let lastSearchOwner = multi.activeId;
   multi.onDidChange(() => {
+    // A pinned signal search belongs to the robot it ran against - switching
+    // the active robot (or losing it) would show A's results above B's tree
+    // and route pinned toggles to the wrong controller.
+    if (multi.activeId !== lastSearchOwner) {
+      lastSearchOwner = multi.activeId;
+      ioProvider.clearSearch();
+    }
     statusProvider.refresh();
     motionProvider.refresh();
     rapidProvider.refresh();
@@ -1988,7 +1996,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const { text, changeCount } = await mgr(multi).getModuleText(taskName, moduleName);
         await openAsScratchFile(`${moduleName}.mod`, text);
         vscode.window.setStatusBarMessage(`${moduleName}: controller change count ${changeCount}`, 8000);
-      } catch (e: unknown) { showError('View module text', e, multi); }
+      // 'View RAPID text', not 'View module text': the isWriteOp heuristic in
+      // friendlyErrorMessage keys on 'module' and would give write-op advice
+      // (motors on, AUTO mode) for what is a pure read.
+      } catch (e: unknown) { showError('View RAPID text', e, multi); }
     }),
 
     // ─── Service routine call ───────────────────────────────────────────────
@@ -2819,7 +2830,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showWarningMessage('Right-click a writable DO signal in the I/O panel to toggle it.');
         return;
       }
-      try { await mgr(multi).writeIoSignal(signal.name, signal.lvalue === '1' ? '0' : '1'); ioProvider.refresh(); }
+      try {
+        const next = signal.lvalue === '1' ? '0' : '1';
+        await mgr(multi).writeIoSignal(signal.name, next);
+        // Keep the caller's Signal object honest: pinned search rows hold a
+        // frozen copy that the state refresh never touches, and the NEXT
+        // toggle computes its write from this very lvalue.
+        signal.lvalue = next;
+        ioProvider.refresh();
+      }
       catch (e: unknown) { showError('Toggle signal', e); }
     }),
 
@@ -2831,7 +2850,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const device = typeof prefillDevice === 'string' ? prefillDevice : undefined;
       const name = await vscode.window.showInputBox({
         title: device ? `Search Signals on ${device}` : 'Search Signals (server-side)',
-        prompt: 'Name filter - leave empty to match all',
+        prompt: 'Name substring - the controller matches substrings, no wildcards',
+        // Live-verified: '*' is literal on the controller and matches NOTHING.
+        validateInput: v => v.includes('*') ? 'Substring match - * is literal on the controller and matches nothing' : undefined,
       });
       if (name === undefined) { return; }
       const typePick = await vscode.window.showQuickPick(
@@ -2847,8 +2868,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (name.trim()) { criteria.name = name.trim(); }
         if (device) { criteria.device = device; }
         if (typePick.value) { criteria.type = typePick.value; }
+        if (Object.keys(criteria).length === 0) {
+          vscode.window.showWarningMessage('Give a name or pick a type - the controller needs at least one criterion.');
+          return;
+        }
         const results = await mgr(multi).searchSignals(criteria);
-        const label = [criteria.name ?? '*', criteria.type, device].filter(Boolean).join(' · ');
+        const label = [criteria.name, criteria.type, device].filter(Boolean).join(' · ') || 'all';
         ioProvider.setSearch(results, label);
         vscode.window.showInformationMessage(`${results.length} signal(s) matched - pinned at the top of the I/O panel.`);
       } catch (e: unknown) { showError('Signal search', e, multi); }
@@ -2860,7 +2885,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
       const name = await vscode.window.showInputBox({
         title: 'Search I/O Devices',
-        prompt: 'Device name filter - leave empty to match all',
+        prompt: 'Device name substring - optional if you pick a state next',
       });
       if (name === undefined) { return; }
       const statePick = await vscode.window.showQuickPick(
@@ -2877,6 +2902,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const criteria: { name?: string; lstate?: 'enabled' | 'disabled' | 'unknown' } = {};
         if (name.trim()) { criteria.name = name.trim(); }
         if (statePick.value) { criteria.lstate = statePick.value; }
+        if (Object.keys(criteria).length === 0) {
+          // The controller's device-search 400s on an empty criteria set (the
+          // client throws INVALID_ARGUMENT before it even hits the wire).
+          vscode.window.showWarningMessage('Give a name or pick a state - the controller needs at least one criterion.');
+          return;
+        }
         const devices = await mgr(multi).searchIoDevices(criteria);
         if (!devices.length) { vscode.window.showInformationMessage('No I/O devices matched.'); return; }
         const pick = await vscode.window.showQuickPick(
@@ -2893,11 +2924,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** CSV for event-log export - quotes escaped, one line per entry. */
-function elogCsv(log: Array<{ seqnum?: number; timestamp?: string; msgtype?: number | string; code?: number; title?: string; desc?: string }>): string {
-  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = log.map(m => [m.seqnum, m.timestamp, m.msgtype, m.code, m.title, m.desc].map(esc).join(','));
-  return ['seqnum,timestamp,msgtype,code,title,desc', ...rows].join('\n');
+/**
+ * CSV for event-log export - quotes escaped, one line per entry, and cells
+ * that a spreadsheet would evaluate as a formula (=, +, @, or a non-numeric
+ * leading -) get a leading apostrophe so controller-originated text cannot
+ * execute on open (CSV injection).
+ */
+function elogCsv(log: Array<{ seqnum?: number; timestamp?: string; msgtype?: number | string; code?: number; title?: string; desc?: string; srcName?: string; causes?: string; consequences?: string; actions?: string }>): string {
+  const esc = (v: unknown) => {
+    let s = String(v ?? '');
+    if (/^[=+@]/.test(s) || (/^-/.test(s) && !/^-?\d+(\.\d+)?$/.test(s))) { s = `'${s}`; }
+    return `"${s.replace(/"/g, '""')}"`;
+  };
+  const rows = log.map(m => [m.seqnum, m.timestamp, m.msgtype, m.code, m.srcName, m.title, m.desc, m.causes, m.consequences, m.actions].map(esc).join(','));
+  return ['seqnum,timestamp,msgtype,code,srcName,title,desc,causes,consequences,actions', ...rows].join('\n');
 }
 
 /**
