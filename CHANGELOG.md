@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.2.0 - 2026-08-15 - The 1.3.0 surface, surfaced: search, rename, export
+
+The "groundwork for upcoming extension features" from 1.1.0 becomes the
+features. Ships the bundled client at 1.3.1 (RobotManager wrapper-surface
+completion: RMMP poll/cancel, per-domain mastership with hold coordination,
+RAPID debugger backbone, event-log domains, and more).
+
+### Added
+
+- **Server-side signal search in the I/O panel.** Search Signals asks the
+  CONTROLLER (name filter + type filter), so it finds signals the polled
+  snapshot doesn't carry, and pins the results as a group at the top of the
+  I/O tree until you clear it (inline button on the group).
+- **I/O device search.** Filter devices by name and logical state; picking a
+  result chains straight into a signal search scoped to that device.
+- **View Module Text with change count.** A sibling of Open Module Source that
+  uses the module-text endpoint and shows the controller's change count in the
+  status bar - the handle a later concurrent-edit-safe push will build on.
+- **Rename files and folders on the controller** from the File Explorer
+  context menu (same-directory rename, both generations).
+- **Export Event Log** from the Diagnostics panel: any domain, JSON or CSV,
+  straight to a local file.
+
+### Changed
+
+- Bundled `abb-rws-client` 1.3.1: RobotManager now wraps the full adapter
+  surface (no more capability gaps behind casts), coordinates caller-held
+  mastership with its self-managing writes and jog, and refuses to trigger a
+  wrong vision job on RWS 1.0 instead of doing it silently.
+
 ## 1.1.0 - 2026-08-12 - Client 1.3.0: discovery that finds every controller, full RWS surface
 
 No extension code changes - this release ships the substantially upgraded

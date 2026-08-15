@@ -62,16 +62,40 @@ export class SignalItem extends vscode.TreeItem {
   }
 }
 
-type IoTreeItem = GroupItem | SignalItem | vscode.TreeItem;
+export class SearchGroupItem extends vscode.TreeItem {
+  constructor(label: string, count: number) {
+    super(`Search: ${label} (${count})`, vscode.TreeItemCollapsibleState.Expanded);
+    this.iconPath = new vscode.ThemeIcon('search');
+    this.contextValue = 'ioSearchGroup';
+  }
+}
+
+type IoTreeItem = GroupItem | SignalItem | SearchGroupItem | vscode.TreeItem;
 
 export class IoTreeProvider implements vscode.TreeDataProvider<IoTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+  // Server-side search results, pinned as an extra root group until cleared.
+  private searchResults: Signal[] | null = null;
+  private searchLabel = '';
+
   constructor(private manager: RobotManager) {}
 
   refresh() { this._onDidChangeTreeData.fire(); }
   getTreeItem(el: IoTreeItem) { return el; }
+
+  setSearch(results: Signal[], label: string) {
+    this.searchResults = results;
+    this.searchLabel = label;
+    this.refresh();
+  }
+  clearSearch() {
+    this.searchResults = null;
+    this.searchLabel = '';
+    this.refresh();
+  }
+  get hasSearch(): boolean { return this.searchResults !== null; }
 
   getChildren(element?: IoTreeItem): IoTreeItem[] {
     const s = this.manager.state;
@@ -82,9 +106,18 @@ export class IoTreeProvider implements vscode.TreeDataProvider<IoTreeItem> {
       return [item];
     }
 
-    // Root: show type groups
+    // Expanded search group: the pinned server-side results
+    if (element instanceof SearchGroupItem) {
+      return (this.searchResults ?? []).map(sig => new SignalItem(sig));
+    }
+
+    // Root: pinned search group (if any), then the type groups
     if (!element) {
-      if (s.ioSignals.length === 0) {
+      const head: IoTreeItem[] = this.searchResults !== null
+        ? [new SearchGroupItem(this.searchLabel, this.searchResults.length)]
+        : [];
+
+      if (s.ioSignals.length === 0 && head.length === 0) {
         const item = new vscode.TreeItem(
           'No signals - click Refresh',
           vscode.TreeItemCollapsibleState.None,
@@ -98,9 +131,10 @@ export class IoTreeProvider implements vscode.TreeDataProvider<IoTreeItem> {
         grouped.set(sig.type, (grouped.get(sig.type) ?? 0) + 1);
       }
 
-      return TYPE_ORDER
-        .filter(t => grouped.has(t))
-        .map(t => new GroupItem(t, grouped.get(t)!));
+      return [
+        ...head,
+        ...TYPE_ORDER.filter(t => grouped.has(t)).map(t => new GroupItem(t, grouped.get(t)!)),
+      ];
     }
 
     // Expanded group: list signals of that type

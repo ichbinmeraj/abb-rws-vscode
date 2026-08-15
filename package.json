@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "abb-rws",
   "displayName": "RAPID Live - ABB Robotics for VS Code",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "The only VS Code extension that connects to live ABB IRC5 (RobotWare 6) and OmniCore (RobotWare 7/8) controllers. Live-tested on RW8.1, RW7.21 and RW6.16. RAPID language server (hover docs, autocomplete, signature help, go-to-definition, inlay hints with live values, CodeLens), git-style push/pull/diff workflow for .mod files, multi-robot management, real-time WebSocket subscriptions, IK + FK, file/IO/event-log access, variable watch panel, dual RWS 1.0 + 2.0 protocol support.",
   "publisher": "merajsafari",
   "author": {
@@ -175,7 +175,7 @@
     "commands": [
       {
         "command": "abbRobot.addRobot",
-        "title": "Add Robot…",
+        "title": "Add Robotâ€¦",
         "category": "ABB Robot",
         "icon": "$(add)"
       },
@@ -235,7 +235,7 @@
       },
       {
         "command": "abbRobot.configure",
-        "title": "Configure Active Robot…",
+        "title": "Configure Active Robotâ€¦",
         "category": "ABB Robot",
         "icon": "$(settings-gear)"
       },
@@ -271,7 +271,7 @@
       },
       {
         "command": "abbRobot.uploadModule",
-        "title": "Load Program from File…",
+        "title": "Load Program from Fileâ€¦",
         "category": "ABB Robot",
         "icon": "$(cloud-upload)"
       },
@@ -283,7 +283,7 @@
       },
       {
         "command": "abbRobot.setPPToRoutine",
-        "title": "Set PP to Routine…",
+        "title": "Set PP to Routineâ€¦",
         "category": "ABB Robot",
         "icon": "$(debug-step-into)"
       },
@@ -323,13 +323,13 @@
       },
       {
         "command": "abbRobot.createRapidTask",
-        "title": "Create New RAPID Task… (writes CFG, requires restart)",
+        "title": "Create New RAPID Taskâ€¦ (writes CFG, requires restart)",
         "category": "ABB Robot",
         "icon": "$(add)"
       },
       {
         "command": "abbRobot.addWatch",
-        "title": "Add Variable to Watch…",
+        "title": "Add Variable to Watchâ€¦",
         "category": "ABB Robot",
         "icon": "$(add)"
       },
@@ -347,7 +347,7 @@
       },
       {
         "command": "abbRobot.writeWatchValue",
-        "title": "Edit Watched Value…",
+        "title": "Edit Watched Valueâ€¦",
         "category": "ABB Robot",
         "icon": "$(edit)"
       },
@@ -365,7 +365,7 @@
       },
       {
         "command": "abbRobot.requestRmmp",
-        "title": "Request Remote Control (RMMP)…",
+        "title": "Request Remote Control (RMMP)â€¦",
         "category": "ABB Robot",
         "icon": "$(unlock)"
       },
@@ -377,13 +377,13 @@
       },
       {
         "command": "abbRobot.openModuleSource",
-        "title": "Open Loaded Module Source…",
+        "title": "Open Loaded Module Sourceâ€¦",
         "category": "ABB Robot",
         "icon": "$(go-to-file)"
       },
       {
         "command": "abbRobot.pullAllModules",
-        "title": "Pull All Modules from Controller…",
+        "title": "Pull All Modules from Controllerâ€¦",
         "category": "ABB Robot",
         "icon": "$(cloud-download)"
       },
@@ -401,67 +401,67 @@
       },
       {
         "command": "abbRobot.callServiceRoutine",
-        "title": "Call Service Routine…",
+        "title": "Call Service Routineâ€¦",
         "category": "ABB Robot",
         "icon": "$(rocket)"
       },
       {
         "command": "abbRobot.createBackup",
-        "title": "Create Backup…",
+        "title": "Create Backupâ€¦",
         "category": "ABB Robot",
         "icon": "$(archive)"
       },
       {
         "command": "abbRobot.restoreBackup",
-        "title": "Restore Backup…",
+        "title": "Restore Backupâ€¦",
         "category": "ABB Robot",
         "icon": "$(history)"
       },
       {
         "command": "abbRobot.calcFK",
-        "title": "Calculate Forward Kinematics…",
+        "title": "Calculate Forward Kinematicsâ€¦",
         "category": "ABB Robot",
         "icon": "$(symbol-numeric)"
       },
       {
         "command": "abbRobot.setActiveTool",
-        "title": "Set Active Tool…",
+        "title": "Set Active Toolâ€¦",
         "category": "ABB Robot",
         "icon": "$(tools)"
       },
       {
         "command": "abbRobot.setActiveWobj",
-        "title": "Set Active Work Object…",
+        "title": "Set Active Work Objectâ€¦",
         "category": "ABB Robot",
         "icon": "$(symbol-misc)"
       },
       {
         "command": "abbRobot.editCfgInstance",
-        "title": "Edit CFG Instance…",
+        "title": "Edit CFG Instanceâ€¦",
         "category": "ABB Robot",
         "icon": "$(edit)"
       },
       {
         "command": "abbRobot.createCfgInstance",
-        "title": "Create CFG Instance…",
+        "title": "Create CFG Instanceâ€¦",
         "category": "ABB Robot",
         "icon": "$(add)"
       },
       {
         "command": "abbRobot.removeCfgInstance",
-        "title": "Remove CFG Instance…",
+        "title": "Remove CFG Instanceâ€¦",
         "category": "ABB Robot",
         "icon": "$(close)"
       },
       {
         "command": "abbRobot.loadCfgFile",
-        "title": "Load .cfg File on Controller…",
+        "title": "Load .cfg File on Controllerâ€¦",
         "category": "ABB Robot",
         "icon": "$(cloud-upload)"
       },
       {
         "command": "abbRobot.saveCfgFile",
-        "title": "Save Domain to .cfg…",
+        "title": "Save Domain to .cfgâ€¦",
         "category": "ABB Robot",
         "icon": "$(save)"
       },
@@ -473,25 +473,25 @@
       },
       {
         "command": "abbRobot.dipcCreateQueue",
-        "title": "DIPC: Create Queue…",
+        "title": "DIPC: Create Queueâ€¦",
         "category": "ABB Robot",
         "icon": "$(add)"
       },
       {
         "command": "abbRobot.dipcSendMessage",
-        "title": "DIPC: Send Message…",
+        "title": "DIPC: Send Messageâ€¦",
         "category": "ABB Robot",
         "icon": "$(arrow-up)"
       },
       {
         "command": "abbRobot.dipcReadMessage",
-        "title": "DIPC: Read Message…",
+        "title": "DIPC: Read Messageâ€¦",
         "category": "ABB Robot",
         "icon": "$(arrow-down)"
       },
       {
         "command": "abbRobot.dipcRemoveQueue",
-        "title": "DIPC: Remove Queue…",
+        "title": "DIPC: Remove Queueâ€¦",
         "category": "ABB Robot",
         "icon": "$(close)"
       },
@@ -503,13 +503,13 @@
       },
       {
         "command": "abbRobot.compressPath",
-        "title": "Compress File / Directory…",
+        "title": "Compress File / Directoryâ€¦",
         "category": "ABB Robot",
         "icon": "$(file-zip)"
       },
       {
         "command": "abbRobot.validateRapidValue",
-        "title": "Validate RAPID Value…",
+        "title": "Validate RAPID Valueâ€¦",
         "category": "ABB Robot",
         "icon": "$(check)"
       },
@@ -533,7 +533,7 @@
       },
       {
         "command": "abbRobot.setSpeedRatio",
-        "title": "Set Speed Ratio…",
+        "title": "Set Speed Ratioâ€¦",
         "category": "ABB Robot",
         "icon": "$(dashboard)"
       },
@@ -569,13 +569,13 @@
       },
       {
         "command": "abbRobot.teleportRobot",
-        "title": "Teleport Robot to Joints… (virtual controller)",
+        "title": "Teleport Robot to Jointsâ€¦ (virtual controller)",
         "category": "ABB Robot",
         "icon": "$(rocket)"
       },
       {
         "command": "abbRobot.calcIK",
-        "title": "Calculate Inverse Kinematics…",
+        "title": "Calculate Inverse Kinematicsâ€¦",
         "category": "ABB Robot",
         "icon": "$(symbol-numeric)"
       },
@@ -641,25 +641,25 @@
       },
       {
         "command": "abbRobot.setJogIncrement",
-        "title": "Set Jog Increment…",
+        "title": "Set Jog Incrementâ€¦",
         "category": "ABB Robot",
         "icon": "$(gear)"
       },
       {
         "command": "abbRobot.setJogSpeed",
-        "title": "Set Jog Speed…",
+        "title": "Set Jog Speedâ€¦",
         "category": "ABB Robot",
         "icon": "$(gear)"
       },
       {
         "command": "abbRobot.setJogMode",
-        "title": "Set Jog Mode (Joint/Cartesian)…",
+        "title": "Set Jog Mode (Joint/Cartesian)â€¦",
         "category": "ABB Robot",
         "icon": "$(gear)"
       },
       {
         "command": "abbRobot.lockOpMode",
-        "title": "Lock Operation Mode…",
+        "title": "Lock Operation Modeâ€¦",
         "category": "ABB Robot",
         "icon": "$(lock)"
       },
@@ -671,31 +671,31 @@
       },
       {
         "command": "abbRobot.setOpMode",
-        "title": "Switch Operation Mode (VC only)…",
+        "title": "Switch Operation Mode (VC only)â€¦",
         "category": "ABB Robot",
         "icon": "$(arrow-swap)"
       },
       {
         "command": "abbRobot.readVariable",
-        "title": "Read RAPID Variable…",
+        "title": "Read RAPID Variableâ€¦",
         "category": "ABB Robot",
         "icon": "$(symbol-variable)"
       },
       {
         "command": "abbRobot.writeVariable",
-        "title": "Write RAPID Variable…",
+        "title": "Write RAPID Variableâ€¦",
         "category": "ABB Robot",
         "icon": "$(edit)"
       },
       {
         "command": "abbRobot.readSymbolProperties",
-        "title": "Read RAPID Symbol Properties…",
+        "title": "Read RAPID Symbol Propertiesâ€¦",
         "category": "ABB Robot",
         "icon": "$(info)"
       },
       {
         "command": "abbRobot.setExecutionCycle",
-        "title": "Set Execution Cycle…",
+        "title": "Set Execution Cycleâ€¦",
         "category": "ABB Robot",
         "icon": "$(sync)"
       },
@@ -707,7 +707,7 @@
       },
       {
         "command": "abbRobot.searchSymbols",
-        "title": "Search RAPID Symbols…",
+        "title": "Search RAPID Symbolsâ€¦",
         "category": "ABB Robot",
         "icon": "$(search)"
       },
@@ -767,7 +767,7 @@
       },
       {
         "command": "abbRobot.writeSignal",
-        "title": "Write Signal Value…",
+        "title": "Write Signal Valueâ€¦",
         "category": "ABB Robot",
         "icon": "$(edit)"
       },
@@ -778,6 +778,42 @@
         "icon": "$(zap)"
       },
       {
+        "command": "abbRobot.searchSignals",
+        "title": "Search Signals (Server-Side)…",
+        "category": "ABB Robot",
+        "icon": "$(search)"
+      },
+      {
+        "command": "abbRobot.clearSignalSearch",
+        "title": "Clear Signal Search",
+        "category": "ABB Robot",
+        "icon": "$(close)"
+      },
+      {
+        "command": "abbRobot.searchIoDevices",
+        "title": "Search I/O Devices…",
+        "category": "ABB Robot",
+        "icon": "$(search)"
+      },
+      {
+        "command": "abbRobot.renameControllerFile",
+        "title": "Rename (File or Folder)",
+        "category": "ABB Robot",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "abbRobot.exportEventLog",
+        "title": "Export Event Log…",
+        "category": "ABB Robot",
+        "icon": "$(export)"
+      },
+      {
+        "command": "abbRobot.viewModuleText",
+        "title": "View Module Text (Change Count)",
+        "category": "ABB Robot",
+        "icon": "$(file-code)"
+      },
+      {
         "command": "abbRobot.getControllerClock",
         "title": "Read Controller Clock",
         "category": "ABB Robot",
@@ -785,13 +821,13 @@
       },
       {
         "command": "abbRobot.setControllerClock",
-        "title": "Set Controller Clock…",
+        "title": "Set Controller Clockâ€¦",
         "category": "ABB Robot",
         "icon": "$(clock)"
       },
       {
         "command": "abbRobot.restartController",
-        "title": "Restart Controller…",
+        "title": "Restart Controllerâ€¦",
         "category": "ABB Robot",
         "icon": "$(refresh)"
       }
@@ -877,7 +913,7 @@
           {
             "id": "connect",
             "title": "Connect to your robot",
-            "description": "Right-click the robot in the Robots panel → **Connect**. The status bar will turn green and the **Live Cell** panel will populate with joint angles, TCP position, and execution state.",
+            "description": "Right-click the robot in the Robots panel â†’ **Connect**. The status bar will turn green and the **Live Cell** panel will populate with joint angles, TCP position, and execution state.",
             "completionEvents": [
               "onContext:abbRobot.connected"
             ],
@@ -899,7 +935,7 @@
           {
             "id": "push",
             "title": "Edit and push back",
-            "description": "Make a change to the .mod file, save it (Ctrl+S), then right-click in the editor → **Push Current File to Controller**. The controller picks up your change immediately.",
+            "description": "Make a change to the .mod file, save it (Ctrl+S), then right-click in the editor â†’ **Push Current File to Controller**. The controller picks up your change immediately.",
             "completionEvents": [
               "onCommand:abbRobot.pushCurrentFile"
             ],
@@ -910,7 +946,7 @@
           {
             "id": "watch",
             "title": "Watch live variables",
-            "description": "Hover any RAPID variable in the editor while connected to see its current value from the controller. To pin a variable so its value is always visible, select it and right-click → **Add Selection to Variable Watch**.",
+            "description": "Hover any RAPID variable in the editor while connected to see its current value from the controller. To pin a variable so its value is always visible, select it and right-click â†’ **Add Selection to Variable Watch**.",
             "completionEvents": [
               "onCommand:abbRobot.addWatch"
             ],
@@ -1045,6 +1081,11 @@
           "group": "navigation@4"
         },
         {
+          "command": "abbRobot.searchSignals",
+          "when": "view == abbRobot.controllerData && abbRobot.connected",
+          "group": "navigation@5"
+        },
+        {
           "command": "abbRobot.refreshElog",
           "when": "view == abbRobot.diagnostics && abbRobot.connected",
           "group": "navigation@1"
@@ -1068,6 +1109,11 @@
           "command": "abbRobot.restartController",
           "when": "view == abbRobot.diagnostics && abbRobot.connected",
           "group": "navigation@5"
+        },
+        {
+          "command": "abbRobot.exportEventLog",
+          "when": "view == abbRobot.diagnostics && abbRobot.connected",
+          "group": "navigation@6"
         }
       ],
       "view/item/context": [
@@ -1107,6 +1153,21 @@
           "group": "1_modify@0"
         },
         {
+          "command": "abbRobot.renameControllerFile",
+          "when": "viewItem == controllerFile",
+          "group": "1_modify@1"
+        },
+        {
+          "command": "abbRobot.renameControllerFile",
+          "when": "viewItem == controllerDir",
+          "group": "1_modify@1"
+        },
+        {
+          "command": "abbRobot.clearSignalSearch",
+          "when": "viewItem == ioSearchGroup",
+          "group": "inline@1"
+        },
+        {
           "command": "abbRobot.deleteControllerFile",
           "when": "viewItem == controllerDir",
           "group": "inline@1"
@@ -1142,6 +1203,11 @@
           "group": "1_modify@0"
         },
         {
+          "command": "abbRobot.viewModuleText",
+          "when": "viewItem == programModule",
+          "group": "1_modify@3"
+        },
+        {
           "command": "abbRobot.setPPToRoutine",
           "when": "viewItem == programModule",
           "group": "1_modify@1"
@@ -1160,6 +1226,11 @@
           "command": "abbRobot.openModuleSource",
           "when": "viewItem == systemModule",
           "group": "1_modify@0"
+        },
+        {
+          "command": "abbRobot.viewModuleText",
+          "when": "viewItem == systemModule",
+          "group": "1_modify@2"
         },
         {
           "command": "abbRobot.unloadModule",
@@ -1217,7 +1288,7 @@
     "package": "npx vsce package"
   },
   "dependencies": {
-    "abb-rws-client": "file:vendor/abb-rws-client-1.3.0.tgz"
+    "abb-rws-client": "file:vendor/abb-rws-client-1.3.1.tgz"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",

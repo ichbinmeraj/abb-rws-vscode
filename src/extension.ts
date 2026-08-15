@@ -1970,6 +1970,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } catch (e: unknown) { showError('Open module source', e, multi); }
     }),
 
+    // ─── Module text with change count - the optimistic-concurrency handle ──
+    tracedCommand('abbRobot.viewModuleText', async (arg?: unknown) => {
+      if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
+      const taskName = multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+      let moduleName: string | undefined =
+        (typeof arg === 'string') ? arg :
+        (arg && typeof arg === 'object' && 'label' in arg && typeof (arg as { label: unknown }).label === 'string')
+          ? (arg as { label: string }).label : undefined;
+      if (!moduleName) {
+        if (multi.state.modules.length === 0) { vscode.window.showWarningMessage('No modules loaded.'); return; }
+        const pick = await vscode.window.showQuickPick(multi.state.modules, { placeHolder: 'Pick a module to view' });
+        if (!pick) { return; }
+        moduleName = pick;
+      }
+      try {
+        const { text, changeCount } = await mgr(multi).getModuleText(taskName, moduleName);
+        await openAsScratchFile(`${moduleName}.mod`, text);
+        vscode.window.setStatusBarMessage(`${moduleName}: controller change count ${changeCount}`, 8000);
+      } catch (e: unknown) { showError('View module text', e, multi); }
+    }),
+
     // ─── Service routine call ───────────────────────────────────────────────
     tracedCommand('abbRobot.callServiceRoutine', async () => {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
@@ -2582,6 +2603,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       catch (e: unknown) { showError('Clear all logs', e); }
     }),
 
+    tracedCommand('abbRobot.exportEventLog', async () => {
+      if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
+      const domPick = await vscode.window.showQuickPick(
+        [
+          { label: 'Domain 0 - common log', value: '0' },
+          { label: 'Other domain number…', value: 'ask' },
+        ],
+        { title: 'Export Event Log (1/2)', placeHolder: 'Which domain?' },
+      );
+      if (!domPick) { return; }
+      let domain = 0;
+      if (domPick.value === 'ask') {
+        const d = await vscode.window.showInputBox({
+          title: 'Event log domain', value: '1',
+          validateInput: v => /^\d+$/.test(v.trim()) ? undefined : 'Whole number',
+        });
+        if (d === undefined) { return; }
+        domain = Number(d.trim());
+      }
+      const fmt = await vscode.window.showQuickPick(
+        [{ label: 'JSON', value: 'json' }, { label: 'CSV', value: 'csv' }],
+        { title: 'Export Event Log (2/2)', placeHolder: 'File format' },
+      );
+      if (!fmt) { return; }
+      try {
+        const log = await mgr(multi).getEventLog(domain);
+        if (!log.length) { vscode.window.showInformationMessage(`Event log domain ${domain} is empty.`); return; }
+        const saveUri = await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.file(path.join(require('os').homedir(), `eventlog-domain${domain}.${fmt.value}`)),
+        });
+        if (!saveUri) { return; }
+        const content = fmt.value === 'json' ? JSON.stringify(log, null, 2) : elogCsv(log);
+        fs.writeFileSync(saveUri.fsPath, content, 'utf8');
+        const open = await vscode.window.showInformationMessage(`✓ ${log.length} event-log entries exported.`, 'Open');
+        if (open === 'Open') { vscode.window.showTextDocument(saveUri); }
+      } catch (e: unknown) { showError('Export event log', e); }
+    }),
+
     // ─── File browser ────────────────────────────────────────────────────────
 
     tracedCommand('abbRobot.refreshFiles', () => { filesProvider.refresh(); }),
@@ -2683,6 +2742,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
 
+    tracedCommand('abbRobot.renameControllerFile', async (arg: unknown) => {
+      if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
+      // Same TreeItem/FileNode unwrap as delete; rename works for files AND
+      // directories (the client's renameFile keeps the parent dir unchanged).
+      const node = (arg && typeof arg === 'object' && 'node' in arg)
+        ? (arg as { node: { path: string; entry: { name: string; type?: string } } }).node
+        : (arg as { path: string; entry: { name: string; type?: string } } | undefined);
+      if (!node || !node.path || !node.entry) {
+        vscode.window.showWarningMessage('Right-click a file or folder in the File Explorer panel to rename it.');
+        return;
+      }
+      const kind = node.entry.type === 'dir' ? 'folder' : 'file';
+      const newName = await vscode.window.showInputBox({
+        title: `Rename ${kind}`,
+        value: node.entry.name,
+        prompt: 'New name (stays in the same directory)',
+        validateInput: v => !v.trim() ? 'Name is empty'
+          : (v.includes('/') || v.includes('\\')) ? 'Name only - rename cannot move between folders'
+          : undefined,
+      });
+      if (!newName || newName === node.entry.name) { return; }
+      try {
+        await mgr(multi).renameFile(node.path, newName);
+        vscode.window.showInformationMessage(`${kind} renamed to '${newName}'.`);
+        filesProvider.refresh();
+      } catch (e: unknown) { showError(`Rename ${kind}`, e, multi); }
+    }),
+
     // ─── I/O signals ─────────────────────────────────────────────────────────
 
     tracedCommand('abbRobot.refreshIo', async () => {
@@ -2736,10 +2823,82 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       catch (e: unknown) { showError('Toggle signal', e); }
     }),
 
+    tracedCommand('abbRobot.searchSignals', async (prefillDevice?: unknown) => {
+      if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
+      // The controller does the filtering (signal-search endpoint), so this
+      // finds signals the polled snapshot may not even contain. A device name
+      // can be passed programmatically (the device-search command does this).
+      const device = typeof prefillDevice === 'string' ? prefillDevice : undefined;
+      const name = await vscode.window.showInputBox({
+        title: device ? `Search Signals on ${device}` : 'Search Signals (server-side)',
+        prompt: 'Name filter - leave empty to match all',
+      });
+      if (name === undefined) { return; }
+      const typePick = await vscode.window.showQuickPick(
+        [
+          { label: 'All types', value: undefined as string | undefined },
+          ...['DI', 'DO', 'AI', 'AO', 'GI', 'GO'].map(t => ({ label: t, value: t as string | undefined })),
+        ],
+        { placeHolder: 'Filter by signal type' },
+      );
+      if (!typePick) { return; }
+      try {
+        const criteria: { name?: string; device?: string; type?: string } = {};
+        if (name.trim()) { criteria.name = name.trim(); }
+        if (device) { criteria.device = device; }
+        if (typePick.value) { criteria.type = typePick.value; }
+        const results = await mgr(multi).searchSignals(criteria);
+        const label = [criteria.name ?? '*', criteria.type, device].filter(Boolean).join(' · ');
+        ioProvider.setSearch(results, label);
+        vscode.window.showInformationMessage(`${results.length} signal(s) matched - pinned at the top of the I/O panel.`);
+      } catch (e: unknown) { showError('Signal search', e, multi); }
+    }),
+
+    tracedCommand('abbRobot.clearSignalSearch', () => { ioProvider.clearSearch(); }),
+
+    tracedCommand('abbRobot.searchIoDevices', async () => {
+      if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
+      const name = await vscode.window.showInputBox({
+        title: 'Search I/O Devices',
+        prompt: 'Device name filter - leave empty to match all',
+      });
+      if (name === undefined) { return; }
+      const statePick = await vscode.window.showQuickPick(
+        [
+          { label: 'Any state', value: undefined as ('enabled' | 'disabled' | 'unknown') | undefined },
+          { label: 'enabled', value: 'enabled' as const },
+          { label: 'disabled', value: 'disabled' as const },
+          { label: 'unknown', value: 'unknown' as const },
+        ],
+        { placeHolder: 'Filter by logical state' },
+      );
+      if (!statePick) { return; }
+      try {
+        const criteria: { name?: string; lstate?: 'enabled' | 'disabled' | 'unknown' } = {};
+        if (name.trim()) { criteria.name = name.trim(); }
+        if (statePick.value) { criteria.lstate = statePick.value; }
+        const devices = await mgr(multi).searchIoDevices(criteria);
+        if (!devices.length) { vscode.window.showInformationMessage('No I/O devices matched.'); return; }
+        const pick = await vscode.window.showQuickPick(
+          devices.map(d => ({ label: d.name, description: `${d.network} · ${d.lstate}/${d.pstate} · ${d.address}`, device: d })),
+          { placeHolder: `${devices.length} device(s) - pick one to search its signals` },
+        );
+        if (!pick) { return; }
+        await vscode.commands.executeCommand('abbRobot.searchSignals', pick.device.name);
+      } catch (e: unknown) { showError('Device search', e, multi); }
+    }),
+
   ); // end subscriptions.push
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** CSV for event-log export - quotes escaped, one line per entry. */
+function elogCsv(log: Array<{ seqnum?: number; timestamp?: string; msgtype?: number | string; code?: number; title?: string; desc?: string }>): string {
+  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const rows = log.map(m => [m.seqnum, m.timestamp, m.msgtype, m.code, m.title, m.desc].map(esc).join(','));
+  return ['seqnum,timestamp,msgtype,code,title,desc', ...rows].join('\n');
+}
 
 /**
  * Map common ABB error patterns to user-actionable messages.
@@ -2750,7 +2909,7 @@ function friendlyErrorMessage(label: string, e: unknown, multi?: MultiRobotManag
   const raw = e instanceof Error ? e.message : String(e);
   const opmode    = multi?.state.opmode ?? '';
   const ctrlstate = multi?.state.ctrlstate ?? '';
-  const isWriteOp = /speed|start|stop|motors|reset|cycle|module|load|write|toggle/i.test(label);
+  const isWriteOp = /speed|start|stop|motors|reset|cycle|module|load|write|toggle|rename/i.test(label);
 
   if (raw.includes('HTTP 403') || raw.toLowerCase().includes('not allowed')) {
     // The most specific case: mastership is held by another user (typically the FlexPendant
