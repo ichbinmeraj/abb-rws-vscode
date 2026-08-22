@@ -1556,10 +1556,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       const active = multi.active!;
-      const taskName = active.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+      const taskName = taskForModule(active.state, moduleName);
 
       // If the module isn't loaded on the controller, offer to load THIS file first
-      if (!active.state.modules.includes(moduleName)) {
+      if (!isModuleLoaded(active.state, moduleName)) {
         const editor = vscode.window.activeTextEditor;
         const filePath = editor?.document.fileName;
         const choice = await vscode.window.showWarningMessage(
@@ -1606,10 +1606,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       const active = multi.active!;
-      const taskName = active.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+      const taskName = taskForModule(active.state, moduleName);
 
       // If module isn't loaded, load THIS file
-      if (!active.state.modules.includes(moduleName)) {
+      if (!isModuleLoaded(active.state, moduleName)) {
         const editor = vscode.window.activeTextEditor;
         const filePath = editor?.document.fileName;
         if (!filePath) {
@@ -1647,25 +1647,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } catch (e) { showError('Run routine', e, multi); }
     }),
 
-    tracedCommand('abbRobot.setPPToRoutine', async (arg?: unknown) => {
+    tracedCommand('abbRobot.setPPToRoutine', async (arg?: unknown, taskArg?: unknown) => {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
       const active = multi.active;
       if (!active) { vscode.window.showWarningMessage('No active robot.'); return; }
-      const taskName = active.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
 
-      // Determine module: from the right-clicked TreeItem if available, else quick-pick
+      // Determine module: from the Program panel row (name + task) if available, else quick-pick
       let moduleName: string | undefined =
         (typeof arg === 'string') ? arg :
         (arg && typeof arg === 'object' && 'label' in arg && typeof (arg as { label: unknown }).label === 'string')
           ? (arg as { label: string }).label : undefined;
+      let taskName: string | undefined = typeof taskArg === 'string' && taskArg ? taskArg : undefined;
       if (!moduleName) {
-        const sysMods = ['BASE', 'user', 'DPUSER', 'DPBASE'];
-        const candidates = active.state.modules.filter(m => !sysMods.includes(m));
-        if (candidates.length === 0) { vscode.window.showWarningMessage('No program modules loaded.'); return; }
-        const pick = await vscode.window.showQuickPick(candidates, { placeHolder: 'Pick the module' });
-        if (!pick) { return; }
-        moduleName = pick;
+        const picked = await pickLoadedModule(active.state, 'Pick the module');
+        if (picked === null) { vscode.window.showWarningMessage('No program modules loaded.'); return; }
+        if (!picked) { return; }
+        moduleName = picked.name;
+        taskName = picked.task;
       }
+      if (!taskName) { taskName = taskForModule(active.state, moduleName); }
 
       // Fetch routines from the controller
       let routines: Array<{ name: string; symtyp: string; local: boolean }>;
@@ -1705,22 +1705,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       } catch (e: unknown) { showError('Set PP to routine', e, multi); }
     }),
 
-    tracedCommand('abbRobot.unloadModule', async (arg?: unknown) => {
+    tracedCommand('abbRobot.unloadModule', async (arg?: unknown, taskArg?: unknown) => {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
-      // Accept either a string module name or a TreeItem with `.label`.
+      // Accept a string module name (plus the owning task from the Program
+      // panel row) or a TreeItem with `.label`.
       let moduleName: string | undefined =
         (typeof arg === 'string') ? arg :
         (arg && typeof arg === 'object' && 'label' in arg && typeof (arg as { label: unknown }).label === 'string')
           ? (arg as { label: string }).label : undefined;
+      let taskName: string | undefined = typeof taskArg === 'string' && taskArg ? taskArg : undefined;
       if (!moduleName) {
-        const pick = await vscode.window.showQuickPick(
-          multi.state.modules.filter(m => !['BASE', 'user', 'DPUSER', 'DPBASE'].includes(m)),
-          { placeHolder: 'Pick module to unload' },
-        );
-        if (!pick) { return; }
-        moduleName = pick;
+        const picked = await pickLoadedModule(multi.state, 'Pick module to unload');
+        if (picked === null) { vscode.window.showWarningMessage('No program modules loaded.'); return; }
+        if (!picked) { return; }
+        moduleName = picked.name;
+        taskName = picked.task;
       }
-      const taskName = multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+      if (!taskName) { taskName = taskForModule(multi.state, moduleName); }
       try {
         await mgr(multi).unloadModule(taskName, moduleName);
         vscode.window.showInformationMessage(`✓ ${moduleName} unloaded.`);
@@ -1957,21 +1958,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
 
     // ─── Module source pull - open a loaded module's RAPID text in an editor tab
-    tracedCommand('abbRobot.openModuleSource', async (arg?: unknown) => {
+    tracedCommand('abbRobot.openModuleSource', async (arg?: unknown, taskArg?: unknown) => {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
-      const taskName = multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
       let moduleName: string | undefined =
         (typeof arg === 'string') ? arg :
         (arg && typeof arg === 'object' && 'label' in arg && typeof (arg as { label: unknown }).label === 'string')
           ? (arg as { label: string }).label : undefined;
+      let taskName: string | undefined = typeof taskArg === 'string' && taskArg ? taskArg : undefined;
       if (!moduleName) {
-        const sysMods = ['BASE', 'user', 'DPUSER', 'DPBASE'];
-        const candidates = multi.state.modules.filter(m => !sysMods.includes(m));
-        if (candidates.length === 0) { vscode.window.showWarningMessage('No program modules loaded.'); return; }
-        const pick = await vscode.window.showQuickPick(candidates, { placeHolder: 'Pick a loaded module to open' });
-        if (!pick) { return; }
-        moduleName = pick;
+        const picked = await pickLoadedModule(multi.state, 'Pick a loaded module to open');
+        if (picked === null) { vscode.window.showWarningMessage('No program modules loaded.'); return; }
+        if (!picked) { return; }
+        moduleName = picked.name;
+        taskName = picked.task;
       }
+      if (!taskName) { taskName = taskForModule(multi.state, moduleName); }
       try {
         const source = await mgr(multi).getModuleSource(taskName, moduleName);
         await openAsScratchFile(`${moduleName}.mod`, source);
@@ -1979,19 +1980,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
 
     // ─── Module text with change count - the optimistic-concurrency handle ──
-    tracedCommand('abbRobot.viewModuleText', async (arg?: unknown) => {
+    tracedCommand('abbRobot.viewModuleText', async (arg?: unknown, taskArg?: unknown) => {
       if (!multi.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
-      const taskName = multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
       let moduleName: string | undefined =
         (typeof arg === 'string') ? arg :
         (arg && typeof arg === 'object' && 'label' in arg && typeof (arg as { label: unknown }).label === 'string')
           ? (arg as { label: string }).label : undefined;
+      let taskName: string | undefined = typeof taskArg === 'string' && taskArg ? taskArg : undefined;
       if (!moduleName) {
-        if (multi.state.modules.length === 0) { vscode.window.showWarningMessage('No modules loaded.'); return; }
-        const pick = await vscode.window.showQuickPick(multi.state.modules, { placeHolder: 'Pick a module to view' });
-        if (!pick) { return; }
-        moduleName = pick;
+        const picked = await pickLoadedModule(multi.state, 'Pick a module to view', true);
+        if (picked === null) { vscode.window.showWarningMessage('No modules loaded.'); return; }
+        if (!picked) { return; }
+        moduleName = picked.name;
+        taskName = picked.task;
       }
+      if (!taskName) { taskName = taskForModule(multi.state, moduleName); }
       try {
         const { text, changeCount } = await mgr(multi).getModuleText(taskName, moduleName);
         await openAsScratchFile(`${moduleName}.mod`, text);
@@ -2923,6 +2926,59 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** The slice of RobotState the module/task helpers below need. */
+type ModuleState = {
+  modules: string[];
+  tasks: Array<{ name: string; active: boolean }>;
+  modulesByTask?: Record<string, string[]>;
+};
+
+/**
+ * MultiMove controllers run several active tasks, each with its own module
+ * set (state.modulesByTask). Resolve which task a module belongs to: an
+ * explicit task wins, then the first task that lists the module, then the
+ * primary active task (which is the whole story on single-task systems).
+ */
+function taskForModule(state: ModuleState, moduleName: string, explicit?: unknown): string {
+  if (typeof explicit === 'string' && explicit) { return explicit; }
+  for (const [task, mods] of Object.entries(state.modulesByTask ?? {})) {
+    if (mods.includes(moduleName)) { return task; }
+  }
+  return state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+}
+
+/** Every loaded module across all active tasks, tagged with its task. */
+function loadedModules(state: ModuleState): Array<{ task: string; name: string }> {
+  const byTask = state.modulesByTask ?? {};
+  if (Object.keys(byTask).length === 0) {
+    const task = state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+    return state.modules.map(name => ({ task, name }));
+  }
+  return Object.entries(byTask).flatMap(([task, mods]) => mods.map(name => ({ task, name })));
+}
+
+function isModuleLoaded(state: ModuleState, moduleName: string): boolean {
+  return loadedModules(state).some(m => m.name === moduleName);
+}
+
+const SYSTEM_MODULES = new Set(['BASE', 'user', 'DPUSER', 'DPBASE']);
+
+/**
+ * Quick-pick a loaded module. Returns null when there is nothing to pick,
+ * undefined when the user cancelled. Shows the owning task when more than
+ * one task has modules (MultiMove), since the same name can live in both.
+ */
+async function pickLoadedModule(state: ModuleState, placeHolder: string, includeSystem = false): Promise<{ task: string; name: string } | null | undefined> {
+  const all = loadedModules(state).filter(m => includeSystem || !SYSTEM_MODULES.has(m.name));
+  if (all.length === 0) { return null; }
+  const multiTask = new Set(all.map(m => m.task)).size > 1;
+  const pick = await vscode.window.showQuickPick(
+    all.map(m => ({ label: m.name, description: multiTask ? m.task : undefined, module: m })),
+    { placeHolder },
+  );
+  return pick?.module;
+}
 
 /**
  * CSV for event-log export - quotes escaped, one line per entry, and cells

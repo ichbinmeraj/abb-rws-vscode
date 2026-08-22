@@ -30,6 +30,18 @@ RAPID debugger backbone, event-log domains, and more).
   mastership with its self-managing writes and jog, and refuses to trigger a
   wrong vision job on RWS 1.0 instead of doing it silently.
 
+### Fixed
+
+- **MultiMove controllers: every task's modules are shown** (#4). The Program
+  panel listed modules for a single task and painted that same list under
+  every active task, so on MultiMove systems (virtual or real) one robot's
+  modules were missing and the other's were duplicated. Each active task now
+  gets its own module list, the module actions (Open, Text, Set PP, Unload)
+  act on the task the row belongs to, the module quick-picks show the owning
+  task when more than one has modules, and the `main`-collision warning only
+  fires for two `main`s inside ONE task - every MultiMove motion task having
+  its own `main` is normal.
+
 ## 1.1.0 - 2026-08-12 - Client 1.3.0: discovery that finds every controller, full RWS surface
 
 No extension code changes - this release ships the substantially upgraded

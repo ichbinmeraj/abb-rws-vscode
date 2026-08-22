@@ -90,7 +90,12 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
     private readonly getWatches: () => WatchEntry[],
   ) {
     multi.onDidChange(() => {
-      const key = this.multi.state.modules.slice().sort().join('|');
+      // Change key covers every task's module list (MultiMove), not just the primary one.
+      const st = this.multi.state;
+      const byTask = Object.entries(st.modulesByTask ?? {});
+      const key = byTask.length
+        ? byTask.map(([t, ms]) => `${t}:${ms.slice().sort().join('|')}`).sort().join('||')
+        : st.modules.slice().sort().join('|');
       if (key !== this.lastModulesKey) {
         this.routineCache.clear();
         this.lastModulesKey = key;
@@ -141,20 +146,26 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
   private async eagerFetchRoutinesForCollisionCheck(): Promise<void> {
     const active = this.multi.active;
     if (!active) { return; }
-    const taskName = this.multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
     const sysmods = new Set(['BASE', 'user', 'DPUSER', 'DPBASE']);
-    const programMods = this.multi.state.modules.filter(m => !sysmods.has(m));
-    for (const mod of programMods) {
-      const key = `${taskName}:${mod}`;
-      if (this.routineCache.has(key) || this.inflight.has(key)) { continue; }
-      this.inflight.add(key);
-      try {
-        const rs = await active.listRoutines(taskName, mod);
-        this.routineCache.set(key, rs.map(r => ({ name: r.name, symtyp: r.symtyp, local: r.local })));
-      } catch {
-        this.routineCache.set(key, []);
-      } finally {
-        this.inflight.delete(key);
+    // Every active task's modules (MultiMove has several), falling back to
+    // the flat primary list when the per-task map is not populated.
+    const byTask = Object.entries(this.multi.state.modulesByTask ?? {});
+    const perTask: Array<[string, string[]]> = byTask.length
+      ? byTask
+      : [[this.multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1', this.multi.state.modules]];
+    for (const [taskName, mods] of perTask) {
+      for (const mod of mods.filter(m => !sysmods.has(m))) {
+        const key = `${taskName}:${mod}`;
+        if (this.routineCache.has(key) || this.inflight.has(key)) { continue; }
+        this.inflight.add(key);
+        try {
+          const rs = await active.listRoutines(taskName, mod);
+          this.routineCache.set(key, rs.map(r => ({ name: r.name, symtyp: r.symtyp, local: r.local })));
+        } catch {
+          this.routineCache.set(key, []);
+        } finally {
+          this.inflight.delete(key);
+        }
       }
     }
     // Re-post once eager fetch is done so the warning appears.
@@ -193,13 +204,16 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
     // we already keep state.modules as a coarse snapshot. For UI purposes
     // we use the flat coarse list since rich type info is shown in the
     // Live Cell + Diagnostics panels anyway.
-    // Group modules under their owning task. The poller only reports modules
-    // for the active task; inactive-task headers show but with a placeholder
-    // "(activate task to see modules)" message.
+    // Group modules under their owning task. The poller reports modules for
+    // every ACTIVE task (MultiMove systems run several, each with its own
+    // set); inactive-task headers show a placeholder instead.
+    const byTask = s.modulesByTask ?? {};
+    const hasByTask = Object.keys(byTask).length > 0;
     const tasks: TaskInfo[] = s.tasks.map(t => {
       const modules: ModuleInfo[] = [];
+      const taskModules = hasByTask ? (byTask[t.name] ?? []) : (t.active ? s.modules : []);
       if (t.active) {
-        for (const m of s.modules) {
+        for (const m of taskModules) {
           const routines = this.routineCache.get(`${t.name}:${m}`);
           modules.push({
             task: t.name,
@@ -229,17 +243,20 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
 
     // Detect main-collision: ≥2 modules with a non-local PROC named `main`.
     // Uses the routine cache populated by eagerFetchRoutinesForCollisionCheck.
-    const modulesWithMain: string[] = [];
+    // A collision is two or more non-local PROC main within ONE task - on
+    // MultiMove every motion task legitimately has its own main.
+    let mainCollisionModules: string[] | undefined;
     for (const t of tasks) {
       if (!t.active) { continue; }
+      const withMain: string[] = [];
       for (const m of t.modules) {
         const rs = this.routineCache.get(`${t.name}:${m.name}`);
         if (rs && rs.some(r => r.name.toLowerCase() === 'main' && r.symtyp.toLowerCase() === 'prc' && !r.local)) {
-          modulesWithMain.push(m.name);
+          withMain.push(m.name);
         }
       }
+      if (withMain.length >= 2) { mainCollisionModules = withMain; break; }
     }
-    const mainCollisionModules = modulesWithMain.length >= 2 ? modulesWithMain : undefined;
 
     const state: ProgramState = {
       connected: s.connected,
@@ -883,11 +900,11 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
             <span class="label">\${escapeHtml(m.name)}</span>
             <span class="type-badge">\${escapeHtml(m.type)}</span>
             <span class="row-actions">
-              <button data-act="open"   data-name="\${escapeHtml(m.name)}">Open</button>
-              <button data-act="text"   data-name="\${escapeHtml(m.name)}" title="Module text with the controller's change count">Text</button>
+              <button data-act="open"   data-task="\${escapeHtml(m.task)}" data-name="\${escapeHtml(m.name)}">Open</button>
+              <button data-act="text"   data-task="\${escapeHtml(m.task)}" data-name="\${escapeHtml(m.name)}" title="Module text with the controller's change count">Text</button>
               \${sys ? '' : \`
-                <button data-act="setpp"  data-name="\${escapeHtml(m.name)}">Set PP</button>
-                <button data-act="unload" data-name="\${escapeHtml(m.name)}">Unload</button>
+                <button data-act="setpp"  data-task="\${escapeHtml(m.task)}" data-name="\${escapeHtml(m.name)}">Set PP</button>
+                <button data-act="unload" data-task="\${escapeHtml(m.task)}" data-name="\${escapeHtml(m.name)}">Unload</button>
               \`}
             </span>
           </div>
@@ -1003,11 +1020,12 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
         btn.addEventListener('click', e => {
           e.stopPropagation();
           const name = btn.dataset.name;
+          const task = btn.dataset.task;   // owning task - MultiMove rows differ per task
           const act = btn.dataset.act;
-          if (act === 'open')   cmd('abbRobot.openModuleSource', name);
-          if (act === 'text')   cmd('abbRobot.viewModuleText', name);
-          if (act === 'setpp')  cmd('abbRobot.setPPToRoutine', name);
-          if (act === 'unload') cmd('abbRobot.unloadModule', name);
+          if (act === 'open')   cmd('abbRobot.openModuleSource', name, task);
+          if (act === 'text')   cmd('abbRobot.viewModuleText', name, task);
+          if (act === 'setpp')  cmd('abbRobot.setPPToRoutine', name, task);
+          if (act === 'unload') cmd('abbRobot.unloadModule', name, task);
         });
       });
 
