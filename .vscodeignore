@@ -46,3 +46,4 @@ package-lock.json
 *.log
 *.tmp
 *.bak
+.claude/**
