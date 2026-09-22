@@ -22,7 +22,8 @@ Apache-2.0 section 6 grants no trademark rights, and this project claims none.
 ## Our position on the `abb-rws-*` naming
 
 The packages in this family are named `abb-rws-client`, `abb-rws-vscode`,
-`abb-rws-panel`, `abb-rws-ros2`, `abb-rws-conformance` and `abb-rws-mcp`.
+`abb-rws-panel`, `abb-rws-daemon`, `abb-rws-ros2`, `abb-rws-conformance` and
+`abb-rws-mcp`.
 
 The name says what the software talks to, not who made it. `abb-rws-client` is a
 client for ABB Robot Web Services in the same way that a PostgreSQL driver is
@@ -60,7 +61,8 @@ Apache-2.0 covers the code in this repository. It does not grant rights to the
 project names either (section 6 again, which cuts both ways).
 
 `abb-rws-client`, `abb-rws-vscode`, `abb-rws-panel`, `abb-rws-ros2`,
-`abb-rws-conformance`, `abb-rws-mcp` and "RAPID Live" identify projects
+`abb-rws-daemon`, `abb-rws-conformance`, `abb-rws-mcp` and "RAPID Live" identify
+projects
 maintained by Meraj Safari.
 
 **You may** use these names to describe compatibility or origin - "a fork of
