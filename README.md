@@ -150,6 +150,12 @@ This extension can change controller state - turn motors on, start RAPID, write 
 - Issues / PRs: <https://github.com/ichbinmeraj/abb-rws-vscode>
 - Release history: [CHANGELOG.md](./CHANGELOG.md)
 
-## License
+## Licence
 
-MIT - Meraj Safari, 2026
+Apache-2.0. See [LICENSE](./LICENSE) and [NOTICE](./NOTICE). If you redistribute this work, keep the NOTICE file. Project names: see [TRADEMARKS.md](./TRADEMARKS.md).
+
+Releases published before this change remain under the MIT licence.
+
+## Disclaimer
+
+Independent open-source project by [Meraj Safari](https://github.com/ichbinmeraj). Not affiliated with, endorsed by or sponsored by ABB. ABB, RobotWare, OmniCore, IRC5 and RobotStudio are trademarks of ABB.
