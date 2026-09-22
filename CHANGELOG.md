@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **License: MIT to Apache-2.0.** The whole `abb-rws-*` family is now Apache-2.0,
+  which adds an explicit patent grant (section 3) and a trademark clause - both
+  of which matter for industrial adoption and for contributors. Releases up to
+  and including 1.2.0 remain available under MIT; this and later releases are
+  Apache-2.0. Added `NOTICE`, `CONTRIBUTING.md` (DCO sign-off) and
+  `TRADEMARKS.md`. The `NOTICE` shipped in the .vsix also records the MIT
+  license of `ws`, which esbuild compiles into `dist/extension.js`.
+
 ## 1.2.0 - 2026-08-15 - The 1.3.0 surface, surfaced: search, rename, export
 
 The "groundwork for upcoming extension features" from 1.1.0 becomes the
