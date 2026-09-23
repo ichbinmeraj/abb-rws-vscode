@@ -62,8 +62,7 @@ project names either (section 6 again, which cuts both ways).
 
 `abb-rws-client`, `abb-rws-vscode`, `abb-rws-panel`, `abb-rws-ros2`,
 `abb-rws-daemon`, `abb-rws-conformance`, `abb-rws-mcp` and "RAPID Live" identify
-projects
-maintained by Meraj Safari.
+projects maintained by Meraj Safari.
 
 **You may** use these names to describe compatibility or origin - "a fork of
 abb-rws-ros2", "compatible with abb-rws-client".
