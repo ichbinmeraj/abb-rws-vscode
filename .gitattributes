@@ -1,0 +1,9 @@
+# Every text file checks out with LF on every platform, whatever core.autocrlf says,
+# so the same commit packages to the same .vsix on Windows, macOS and Linux.
+* text=auto eol=lf
+
+# Binary files are never converted.
+*.png binary
+*.ttf binary
+*.vsix binary
+*.tgz binary

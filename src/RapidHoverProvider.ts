@@ -7,29 +7,44 @@ import { Logger } from './Logger';
 /**
  * Hover provider for RAPID source files (.mod / .sys / .prg).
  *
- * Backed by a static JSON database extracted from ABB's
- * "RAPID Instructions, Functions and Data types" reference manual
- * (3HAC050917-001 Rev F) - 666 entries covering every documented
- * instruction, function, and data type.
+ * Backed by a static JSON database of RAPID's built-in names (705 entries:
+ * instructions, functions, data types and structural keywords). It holds
+ * signatures only - name, kind, call shape, parameter names with their types
+ * and optional / switch markers, and a function's return type - no
+ * descriptions or examples (see scripts/strip-language-data.mjs).
  *
  * Hover behavior:
  *   - Detects the identifier under the cursor.
  *   - Looks it up case-insensitively in the database.
- *   - Renders a Markdown hover with: title, brief, formal syntax,
- *     a code-fenced example, and a kind tag.
+ *   - Renders a Markdown hover with: name and kind, the call shape,
+ *     the parameter list with types, and the return type of a function.
  *
  * Returns null for unknown identifiers (user-defined symbols, comments,
  * etc.) so VS Code falls through to other providers.
  */
 
+interface Parameter {
+  name: string;
+  type: string;
+  optional?: boolean;
+  switch?: boolean;
+  /** Alternative to the previous parameter (`\V | \T`). */
+  alt?: boolean;
+}
+
 interface RapidEntry {
   kind: 'instruction' | 'function' | 'datatype' | 'keyword';
   name: string;
-  brief: string;
-  usage: string;
-  syntax: string;
-  examples: string[];
+  /** Neutral one-liner built from kind and return type ("RAPID function returning num"). */
+  summary: string;
+  /** Call shape built from the parameter list; "" when not known. */
+  signature: string;
+  returns?: string;
+  parameters?: Parameter[];
 }
+
+/** Parameter lines shown in one hover; longer lists end with "... and N more". */
+const MAX_PARAMETER_LINES = 16;
 
 let DB: Record<string, RapidEntry> | null = null;
 
@@ -151,32 +166,41 @@ export class RapidHoverProvider implements vscode.HoverProvider {
                     : 'Data type';
     md.appendMarkdown(`**\`${e.name}\`** - _${kindLabel}_\n\n`);
 
-    // Brief description (one-liner from the manual's TOC)
-    if (e.brief) {
-      md.appendMarkdown(`${e.brief}\n\n`);
+    // Call shape (built from the parameter list, not quoted from a manual)
+    if (e.signature) {
+      md.appendCodeblock(e.signature.split('\n').slice(0, 8).join('\n'), 'rapid');
+    } else {
+      md.appendMarkdown(`${e.summary}\n\n`);
     }
 
-    // Formal syntax pattern (if extracted)
-    if (e.syntax) {
-      const syntaxLines = e.syntax.split('\n').slice(0, 6).join('\n');
-      md.appendCodeblock(syntaxLines, 'rapid');
+    // Parameters: name, type, optional / switch / alternative markers
+    const params = e.parameters ?? [];
+    if (params.length > 0) {
+      const lines = params.slice(0, MAX_PARAMETER_LINES).map((p, i) => {
+        const type = p.switch ? 'switch' : `\`${p.type}\``;
+        const marks = [
+          p.optional ? 'optional' : '',
+          p.alt && i > 0 ? `or ${params[i - 1].name}` : '',
+        ].filter(Boolean);
+        return `- \`${p.name}\` ${type}${marks.length ? ` _(${marks.join(', ')})_` : ''}`;
+      });
+      if (params.length > MAX_PARAMETER_LINES) {
+        lines.push(`- ... and ${params.length - MAX_PARAMETER_LINES} more`);
+      }
+      md.appendMarkdown(lines.join('\n') + '\n\n');
     }
 
-    // Example
-    if (e.examples?.length > 0) {
-      md.appendMarkdown(`**Example:**\n`);
-      md.appendCodeblock(e.examples[0], 'rapid');
+    // Return type of a function
+    if (e.returns) {
+      md.appendMarkdown(`Returns \`${e.returns}\`\n\n`);
     }
 
-    // Footer - credit the extension + cite the source manual.
-    // ABB users may need to verify against newer manual revisions in their RobotWare version,
-    // so we link out to the Developer Center landing page as well.
+    // Footer - the hover carries signatures only; point to ABB's manual for the rest.
     md.appendMarkdown(
       `\n---\n` +
       `<small>` +
-      `From **ABB Technical Reference Manual** - _RAPID Instructions, Functions and Data types_, ` +
-      `[3HAC050917-001 Rev F](https://library.abb.com/r?dkey=3HAC050917-001). ` +
-      `Surfaced by **RAPID Live - ABB Robotics for VS Code**.` +
+      `Signatures only. For descriptions see ABB's _RAPID Instructions, Functions and Data types_ ` +
+      `manual ([3HAC050917-001](https://library.abb.com/r?dkey=3HAC050917-001)).` +
       `</small>`,
     );
     md.supportHtml = true;

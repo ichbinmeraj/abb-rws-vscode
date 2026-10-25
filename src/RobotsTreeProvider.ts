@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { MultiRobotManager, RobotConfig, RobotManager } from 'abb-rws-client';
+import { motionReading, robotsViewMotion } from './motionControl';
 
 class RobotItem extends vscode.TreeItem {
   constructor(
@@ -7,6 +8,7 @@ class RobotItem extends vscode.TreeItem {
     public readonly config: RobotConfig,
     manager: RobotManager,
     isActive: boolean,
+    allowedHere: boolean,
   ) {
     super(config.name, vscode.TreeItemCollapsibleState.None);
 
@@ -17,17 +19,21 @@ class RobotItem extends vscode.TreeItem {
 
     if (connected) {
       const motor = s.ctrlstate === 'motoron' ? '⚡' : '○';
-      this.description = [rwMajor, s.opmode, `RAPID: ${s.execstate}`].filter(Boolean).join('  ');
+      // RobotWare 8: motion control allowed, or not known after RAPID Live allowed it; nothing on 6 or 7.
+      const motion = robotsViewMotion(motionReading(s), allowedHere);
+      this.description = [rwMajor, s.opmode, `RAPID: ${s.execstate}`, motion.description].filter(Boolean).join('  ');
       this.tooltip     = new vscode.MarkdownString(
         `**${config.name}** ${motor}\n\n` +
         `Host: \`${config.host}\`\n\nRobotWare: ${rw}\n\n` +
-        `Controller: ${s.ctrlstate}  |  Mode: ${s.opmode}  |  RAPID: ${s.execstate}`
+        `Controller: ${s.ctrlstate}  |  Mode: ${s.opmode}  |  RAPID: ${s.execstate}` +
+        (motion.tooltip ? `\n\n${motion.tooltip}` : '')
       );
       this.iconPath    = new vscode.ThemeIcon(
         isActive ? 'circle-filled' : 'plug',
         isActive ? new vscode.ThemeColor('charts.green') : undefined
       );
-      this.contextValue = isActive ? 'robot.connected.active' : 'robot.connected';
+      // `.motion`: its motion control may stand, so the row offers Withdraw Motion Control.
+      this.contextValue = (isActive ? 'robot.connected.active' : 'robot.connected') + (motion.withdraw ? '.motion' : '');
     } else {
       this.description  = 'offline';
       this.tooltip      = `${config.name}\nHost: ${config.host}\nNot connected`;
@@ -59,14 +65,15 @@ export class RobotsTreeProvider implements vscode.TreeDataProvider<RobotsTreeIte
   private _onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  constructor(private readonly multi: MultiRobotManager) {}
+  /** `allowedHere`: whether RAPID Live allowed RobotWare 8 motion control on the robot during its connection. */
+  constructor(private readonly multi: MultiRobotManager, private readonly allowedHere: (id: string) => boolean = () => false) {}
 
   refresh() { this._onDidChangeTreeData.fire(); }
   getTreeItem(el: RobotsTreeItem) { return el; }
 
   getChildren(): RobotsTreeItem[] {
     const items: RobotsTreeItem[] = this.multi.entries.map(({ id, config, manager }) =>
-      new RobotItem(id, config, manager, id === this.multi.activeId)
+      new RobotItem(id, config, manager, id === this.multi.activeId, this.allowedHere(id))
     );
     items.push(new AddRobotItem());
     return items;

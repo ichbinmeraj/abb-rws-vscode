@@ -1,9 +1,12 @@
 # Source - only the bundled dist/extension.js ships
 src/**
 tsconfig.json
+tsconfig.*.json
 build.js
 
 # Tests, probes, scratch - internal dev tools
+test/**
+out/**
 test-*.js
 test-*.cjs
 test-*.mjs
@@ -26,8 +29,10 @@ samples/MotionTest.controller.mod
 !README.md
 !CHANGELOG.md
 !SECURITY.md
+!TRADEMARKS.md
 docs/**
 samples/TEST_PLAN.md
+media/screenshots/README.md
 
 # Repo / dev config
 .vscode/**
@@ -46,4 +51,4 @@ package-lock.json
 *.log
 *.tmp
 *.bak
-.claude/**
+.*/**

@@ -1,23 +1,24 @@
 #!/usr/bin/env node
 /**
- * Parse the ABB RAPID reference manual PDF text dump into a JSON database.
+ * Parse the ABB RAPID reference manual PDF text dump into the signatures-only
+ * JSON database the hover, completion and signature help read.
  *
- * Input:  scripts/rapid.txt (output of `pdftotext -layout Rapid_instructions.pdf`)
+ * Input:  the text dump of ABB's RAPID reference manual (`pdftotext -layout Rapid_instructions.pdf`),
+ *         given as the first argument. The manual text is not kept in this repository.
  * Output: extension's resources/rapid-language-data.json
  *
- * Each entry captures:
- *   - kind: 'instruction' | 'function' | 'datatype'
- *   - name
- *   - brief (one-line description from TOC heading)
- *   - usage (multi-paragraph explanation)
- *   - syntax (formal syntax pattern)
- *   - examples (code samples)
- *   - related (See Also pointers)
+ * Only structure is read from the manual: each entry's name and kind, its
+ * syntax block (for the parameter list and a function's return type). The
+ * database is reduced by strip-language-data.mjs before it is written, so it
+ * holds kind, name, call shape, parameters with types and optional / switch
+ * markers, and return type - no description, usage text or example.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { stripDb } from './strip-language-data.mjs';
 
-const INPUT = 'scripts/rapid.txt';
+const INPUT = process.argv[2];
+if (!INPUT) { console.error('usage: node scripts/parse-rapid-manual.mjs <text dump of the RAPID reference manual>'); process.exit(1); }
 const OUT   = path.resolve('resources/rapid-language-data.json');
 
 const raw = fs.readFileSync(INPUT, 'utf-8');
@@ -116,62 +117,6 @@ function extractSyntax(body) {
     .filter(l => l.length > 0)
     .join('\n');
   return cleaned;
-}
-
-// Extract "brief" usage paragraph (the first 1-3 sentences of explanation)
-function extractUsage(body) {
-  const lines = body.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !isNoise(l));
-  // Look for the first paragraph after "Usage" or just take first few non-header lines
-  let usage = [];
-  let inUsage = false;
-  for (let i = 0; i < lines.length && usage.length < 8; i++) {
-    const t = lines[i];
-    if (/^Usage\b/.test(t)) {
-      inUsage = true;
-      // Sometimes "Usage <text>" has the first sentence inline
-      const inline = t.replace(/^Usage\s+/, '');
-      if (inline && inline !== 'Usage') { usage.push(inline); }
-      continue;
-    }
-    if (inUsage) {
-      // Stop at next section
-      if (/^(Basic examples?|Example|Arguments?|Syntax|Related|Limitations|Predefined|Components|Structure)\b/.test(t)) {
-        break;
-      }
-      usage.push(t);
-    }
-  }
-  // If no "Usage" header found, fall back to first few text lines
-  if (usage.length === 0) {
-    for (const t of lines) {
-      if (/^(Example|Arguments?|Syntax|Components|Structure)\b/.test(t)) break;
-      usage.push(t);
-      if (usage.length >= 4) break;
-    }
-  }
-  return usage.join(' ').replace(/\s+/g, ' ').trim();
-}
-
-// Extract examples - short code-like blocks (lines starting with the entry name, or in indented blocks)
-function extractExamples(body, entryName) {
-  const lines = body.split('\n');
-  const examples = [];
-  // Look for lines that contain "<entryName> ..." with semicolon, typical RAPID pattern
-  const exRe = new RegExp(`\\b${entryName}\\b[^;]*;`, 'g');
-  for (const ln of lines) {
-    const matches = ln.match(exRe);
-    if (matches) {
-      for (const m of matches) {
-        const cleaned = m.trim();
-        if (cleaned.length > entryName.length + 2 && !examples.includes(cleaned)) {
-          examples.push(cleaned);
-          if (examples.length >= 3) break;
-        }
-      }
-    }
-    if (examples.length >= 3) break;
-  }
-  return examples;
 }
 
 // ─── Locate body sections ──────────────────────────────────────────────────
@@ -290,16 +235,11 @@ function parseParameters(syntax) {
 function addEntries(entries, kind) {
   for (const [name, e] of entries) {
     const syntax     = extractSyntax(e.body);
-    const usage      = extractUsage(e.body);
-    const examples   = extractExamples(e.body, name);
     const parameters = parseParameters(syntax);
     db[name.toLowerCase()] = {
       kind,
       name,
-      brief:    e.brief,
-      usage:    usage.slice(0, 1500),  // cap to keep JSON small
-      syntax:   syntax.slice(0, 500),
-      examples: examples.slice(0, 3),
+      syntax:   syntax.slice(0, 500),  // read by stripDb for the return type; not written
       parameters,
     };
   }
@@ -313,78 +253,79 @@ addEntries(datas, 'datatype');
 // These are RAPID syntax constructs (module/routine declarations, control flow,
 // data declaration prefixes). They don't have entries in the manual's section 1
 // (which covers callable instructions only) but devs hover them all the time.
+// The forms are written here, not taken from the manual.
 const keywords = [
-  ['MODULE',     'Module declaration', 'Begins a RAPID module.', 'MODULE moduleName [(SYSMODULE | NOSTEPIN | VIEWONLY | READONLY | NOVIEW)]\n  …\nENDMODULE'],
-  ['ENDMODULE',  'Module end',         'Closes a MODULE block.', 'ENDMODULE'],
-  ['PROC',       'Procedure declaration', 'Begins a procedure (callable, no return value).', 'PROC name([params])\n  …\nENDPROC'],
-  ['ENDPROC',    'Procedure end',      'Closes a PROC block.', 'ENDPROC'],
-  ['FUNC',       'Function declaration', 'Begins a function (callable, returns a typed value).', 'FUNC type name([params])\n  …\nENDFUNC'],
-  ['ENDFUNC',    'Function end',       'Closes a FUNC block.', 'ENDFUNC'],
-  ['TRAP',       'Trap routine declaration', 'Begins an interrupt-handler routine.', 'TRAP name\n  …\nENDTRAP'],
-  ['ENDTRAP',    'Trap end',           'Closes a TRAP block.', 'ENDTRAP'],
-  ['RECORD',     'Record declaration', 'Defines a composite (struct-like) data type.', 'RECORD recordType\n  …\nENDRECORD'],
-  ['ENDRECORD',  'Record end',         'Closes a RECORD block.', 'ENDRECORD'],
-  ['VAR',        'Variable declaration', 'Declares a variable. Reset to its initial value when the program is started.', 'VAR num counter := 0;'],
-  ['PERS',       'Persistent variable declaration', 'Declares a persistent variable - value survives program restarts.', 'PERS num totalRuns := 0;'],
-  ['CONST',      'Constant declaration', 'Declares a compile-time constant.', 'CONST num maxIters := 100;'],
-  ['LOCAL',      'Local scope modifier', 'Marks a routine or data as local to the module (not exported).', 'LOCAL PROC helper()\n  …\nENDPROC'],
-  ['TASK',       'Task scope modifier', 'Declares task-private persistent data.', 'TASK PERS num taskCounter := 0;'],
-  ['IF',         'If statement',       'Conditional execution.', 'IF cond THEN\n  …\nELSEIF other THEN\n  …\nELSE\n  …\nENDIF'],
-  ['THEN',       'Then keyword',       'Body of an IF / ELSEIF clause.', 'IF cond THEN'],
-  ['ELSE',       'Else keyword',       'Fallback branch in IF.', 'ELSE'],
-  ['ELSEIF',     'Else-if keyword',    'Additional condition in IF chain.', 'ELSEIF other THEN'],
-  ['ENDIF',      'If end',             'Closes an IF block.', 'ENDIF'],
-  ['WHILE',      'While loop',         'Repeats while a condition is true.', 'WHILE cond DO\n  …\nENDWHILE'],
-  ['ENDWHILE',   'While end',          'Closes a WHILE block.', 'ENDWHILE'],
-  ['FOR',        'For loop',           'Numeric range loop.', 'FOR i FROM 1 TO 10 DO\n  …\nENDFOR'],
-  ['FROM',       'For range start',    'First value in a FOR loop.', 'FOR i FROM 1 TO 10 DO'],
-  ['TO',         'For range end',      'Last value in a FOR loop.', 'FOR i FROM 1 TO 10 DO'],
-  ['STEP',       'For step',           'Increment between iterations.', 'FOR i FROM 0 TO 100 STEP 10 DO'],
-  ['DO',         'Loop body keyword',  'Begins the body of a WHILE / FOR loop.', 'DO'],
-  ['ENDFOR',     'For end',            'Closes a FOR block.', 'ENDFOR'],
-  ['TEST',       'Test statement',     'Multi-way branch on a single value.', 'TEST x\n  CASE 1: …\n  CASE 2,3: …\n  DEFAULT: …\nENDTEST'],
-  ['CASE',       'Case clause',        'Branch in a TEST statement.', 'CASE 1, 2, 3:'],
-  ['DEFAULT',    'Default clause',     'Fallback branch in TEST.', 'DEFAULT:'],
-  ['ENDTEST',    'Test end',           'Closes a TEST block.', 'ENDTEST'],
-  ['RETURN',     'Return',             'Exits the current routine; in FUNC, returns a value.', 'RETURN value;'],
-  ['EXIT',       'Exit',               'Stops program execution permanently. PP must be reset to restart.', 'EXIT;'],
-  ['STOP',       'Stop',               'Stops program execution; can be resumed.', 'STOP;'],
-  ['ERROR',      'Error handler',      'Begins a routine-level error handler.', 'ERROR\n  IF ERRNO = ERR_DIVZERO THEN\n    …'],
-  ['UNDO',       'Undo handler',       'Cleanup code executed when execution leaves the routine abnormally.', 'UNDO\n  …'],
-  ['BACKWARD',   'Backward handler',   'Code to run when stepping backward through the routine.', 'BACKWARD'],
-  ['TRYNEXT',   'Try next',           'Inside ERROR: skip the offending instruction and continue.', 'TRYNEXT;'],
-  ['RETRY',     'Retry',              'Inside ERROR: re-execute the failed instruction.', 'RETRY;'],
-  ['RAISE',     'Raise error',        'Re-raise the current error to the caller.', 'RAISE;'],
-  ['CONNECT',   'Connect interrupt',  'Bind a signal/condition to a TRAP routine.', 'CONNECT intr WITH trapName;'],
-  ['WITH',      'With clause',        'Used in CONNECT: WITH trapName.', 'CONNECT intr WITH trapName;'],
-  ['NOSTEPIN',  'NoStepIn flag',      'Module attribute: routines cannot be stepped into.', 'MODULE m1(NOSTEPIN)'],
-  ['SYSMODULE', 'SysModule flag',     'Module attribute: marks as system module - survives Reset RAPID.', 'MODULE myUtils(SYSMODULE)'],
-  ['VIEWONLY',  'ViewOnly flag',      'Module attribute: read-only.', 'MODULE m1(VIEWONLY)'],
-  ['READONLY',  'ReadOnly flag',      'Module attribute: data is constant.', 'MODULE m1(READONLY)'],
-  ['NOVIEW',    'NoView flag',        'Module attribute: source not displayable.', 'MODULE m1(NOVIEW)'],
-  ['TRUE',      'Boolean literal',    'Boolean constant.', 'VAR bool flag := TRUE;'],
-  ['FALSE',     'Boolean literal',    'Boolean constant.', 'VAR bool flag := FALSE;'],
+  ['MODULE',     'MODULE moduleName [(SYSMODULE | NOSTEPIN | VIEWONLY | READONLY | NOVIEW)]\n  …\nENDMODULE'],
+  ['ENDMODULE',  'ENDMODULE'],
+  ['PROC',       'PROC name([params])\n  …\nENDPROC'],
+  ['ENDPROC',    'ENDPROC'],
+  ['FUNC',       'FUNC type name([params])\n  …\nENDFUNC'],
+  ['ENDFUNC',    'ENDFUNC'],
+  ['TRAP',       'TRAP name\n  …\nENDTRAP'],
+  ['ENDTRAP',    'ENDTRAP'],
+  ['RECORD',     'RECORD recordType\n  …\nENDRECORD'],
+  ['ENDRECORD',  'ENDRECORD'],
+  ['VAR',        'VAR num counter := 0;'],
+  ['PERS',       'PERS num totalRuns := 0;'],
+  ['CONST',      'CONST num maxIters := 100;'],
+  ['LOCAL',      'LOCAL PROC helper()\n  …\nENDPROC'],
+  ['TASK',       'TASK PERS num taskCounter := 0;'],
+  ['IF',         'IF cond THEN\n  …\nELSEIF other THEN\n  …\nELSE\n  …\nENDIF'],
+  ['THEN',       'IF cond THEN'],
+  ['ELSE',       'ELSE'],
+  ['ELSEIF',     'ELSEIF other THEN'],
+  ['ENDIF',      'ENDIF'],
+  ['WHILE',      'WHILE cond DO\n  …\nENDWHILE'],
+  ['ENDWHILE',   'ENDWHILE'],
+  ['FOR',        'FOR i FROM 1 TO 10 DO\n  …\nENDFOR'],
+  ['FROM',       'FOR i FROM 1 TO 10 DO'],
+  ['TO',         'FOR i FROM 1 TO 10 DO'],
+  ['STEP',       'FOR i FROM 0 TO 100 STEP 10 DO'],
+  ['DO',         'DO'],
+  ['ENDFOR',     'ENDFOR'],
+  ['TEST',       'TEST x\n  CASE 1: …\n  CASE 2,3: …\n  DEFAULT: …\nENDTEST'],
+  ['CASE',       'CASE 1, 2, 3:'],
+  ['DEFAULT',    'DEFAULT:'],
+  ['ENDTEST',    'ENDTEST'],
+  ['RETURN',     'RETURN value;'],
+  ['EXIT',       'EXIT;'],
+  ['STOP',       'STOP;'],
+  ['ERROR',      'ERROR\n  IF ERRNO = ERR_DIVZERO THEN\n    …'],
+  ['UNDO',       'UNDO\n  …'],
+  ['BACKWARD',   'BACKWARD'],
+  ['TRYNEXT',   'TRYNEXT;'],
+  ['RETRY',     'RETRY;'],
+  ['RAISE',     'RAISE;'],
+  ['CONNECT',   'CONNECT intr WITH trapName;'],
+  ['WITH',      'CONNECT intr WITH trapName;'],
+  ['NOSTEPIN',  'MODULE m1(NOSTEPIN)'],
+  ['SYSMODULE', 'MODULE myUtils(SYSMODULE)'],
+  ['VIEWONLY',  'MODULE m1(VIEWONLY)'],
+  ['READONLY',  'MODULE m1(READONLY)'],
+  ['NOVIEW',    'MODULE m1(NOVIEW)'],
+  ['TRUE',      'VAR bool flag := TRUE;'],
+  ['FALSE',     'VAR bool flag := FALSE;'],
 ];
-for (const [name, brief, usage, syntax] of keywords) {
+for (const [name, syntax] of keywords) {
   if (!db[name.toLowerCase()]) {
-    db[name.toLowerCase()] = { kind: 'keyword', name, brief, usage, syntax, examples: [] };
+    db[name.toLowerCase()] = { kind: 'keyword', name, syntax };
   }
 }
 
-// ─── Write output ──────────────────────────────────────────────────────────
+// ─── Write output (signatures only) ────────────────────────────────────────
+const shipped = stripDb(db);
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
-fs.writeFileSync(OUT, JSON.stringify(db, null, 0));  // minified
+fs.writeFileSync(OUT, JSON.stringify(shipped, null, 0));  // minified
 
 const stats = fs.statSync(OUT);
-console.log(`Wrote ${OUT} - ${Object.keys(db).length} entries, ${(stats.size / 1024).toFixed(1)} KB`);
+console.log(`Wrote ${OUT} - ${Object.keys(shipped).length} entries, ${(stats.size / 1024).toFixed(1)} KB`);
 
 // ─── Verify a few entries ───────────────────────────────────────────────────
 const samples = ['movej', 'movel', 'waittime', 'tpwrite', 'abs', 'cos', 'robtarget', 'jointtarget', 'num'];
 console.log('\n=== sample entries ===');
 for (const k of samples) {
-  const e = db[k];
+  const e = shipped[k];
   if (!e) { console.log(`  ${k}: NOT FOUND`); continue; }
-  console.log(`  ${e.name} (${e.kind}): ${e.brief.slice(0, 60)}`);
-  if (e.syntax) console.log(`    syntax: ${e.syntax.split('\n')[0].slice(0, 80)}`);
-  if (e.examples?.length) console.log(`    e.g.:   ${e.examples[0].slice(0, 80)}`);
+  console.log(`  ${e.name} (${e.kind}): ${e.summary}`);
+  if (e.signature) console.log(`    ${e.signature.split('\n')[0].slice(0, 100)}`);
 }

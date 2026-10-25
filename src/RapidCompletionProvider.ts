@@ -7,8 +7,8 @@ import { Logger } from './Logger';
  * Completion (autocomplete) + snippet provider for RAPID source files.
  *
  * Sources of suggestions:
- *   - 705 entries from the ABB Technical Reference Manual
- *     (instructions, functions, data types, structural keywords) - all surfaced.
+ *   - 705 built-in names (instructions, functions, data types, structural
+ *     keywords) from the signatures-only JSON database - all surfaced.
  *   - A curated map of "snippet templates" for common instructions and
  *     control-flow constructs. Where a template exists, accepting the
  *     completion expands into a tab-stop snippet (placeholders the user
@@ -22,10 +22,11 @@ import { Logger } from './Logger';
 interface RapidEntry {
   kind: 'instruction' | 'function' | 'datatype' | 'keyword';
   name: string;
-  brief: string;
-  usage: string;
-  syntax: string;
-  examples: string[];
+  /** Neutral one-liner built from kind and return type ("RAPID function returning num"). */
+  summary: string;
+  /** Call shape built from the parameter list; "" when not known. */
+  signature: string;
+  returns?: string;
 }
 
 let DB: Record<string, RapidEntry> | null = null;
@@ -134,16 +135,16 @@ export class RapidCompletionProvider implements vscode.CompletionItemProvider {
 
   private toCompletion(e: RapidEntry): vscode.CompletionItem {
     const item = new vscode.CompletionItem(e.name, this.kindFor(e.kind));
-    item.detail = `${this.kindLabel(e.kind)} - ${e.brief}`;
+    item.detail = e.summary;
 
-    // Hover-style documentation
+    // Hover-style documentation: the call shape and, for a function, its return type
     const md = new vscode.MarkdownString();
-    md.appendMarkdown(`**${e.name}** - _${this.kindLabel(e.kind)}_\n\n${e.brief}\n\n`);
-    if (e.syntax) {
-      md.appendCodeblock(e.syntax.split('\n').slice(0, 4).join('\n'), 'rapid');
+    md.appendMarkdown(`**${e.name}** - _${this.kindLabel(e.kind)}_\n\n`);
+    if (e.signature) {
+      md.appendCodeblock(e.signature.split('\n').slice(0, 4).join('\n'), 'rapid');
     }
-    if (e.examples?.length) {
-      md.appendCodeblock(e.examples[0], 'rapid');
+    if (e.returns) {
+      md.appendMarkdown(`Returns \`${e.returns}\``);
     }
     item.documentation = md;
 

@@ -13,6 +13,7 @@
 import { RwsClient } from "abb-rws-client";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { RWS1_URL, RWS_USER as USER, RWS_PASS as PASS, tcpPing } from "./scripts/lib/probe-common.mjs";
 
 // ─── Auto-detect IRC5 VC port (1024-65535) ─────────────────────────────────
@@ -265,7 +266,7 @@ console.log("\n" + "═".repeat(70));
 console.log(" Module load / unload (TestExtension.mod)");
 console.log("═".repeat(70));
 
-const MODULE_PATH_LOCAL  = path.resolve("D:/abb-rws-vscode/samples/TestExtension.mod");
+const MODULE_PATH_LOCAL  = path.join(path.dirname(fileURLToPath(import.meta.url)), "samples", "TestExtension.mod");
 const MODULE_PATH_REMOTE = "$HOME/TestExtension.mod";
 let moduleSrc;
 

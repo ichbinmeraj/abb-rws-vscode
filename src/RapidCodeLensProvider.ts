@@ -59,7 +59,7 @@ export class RapidCodeLensProvider implements vscode.CodeLensProvider {
       const runLens = new vscode.CodeLens(range, {
         title: kind === 'TRAP' ? '▶ (TRAP - interrupt handler, not directly runnable)' : '▶ Run this routine',
         command: kind === 'TRAP' ? '' : 'abbRobot.runRoutineFromCodeLens',
-        arguments: [moduleName, name, kind],
+        arguments: [moduleName, name, kind, document.fileName],
       });
       lenses.push(runLens);
 
@@ -68,7 +68,7 @@ export class RapidCodeLensProvider implements vscode.CodeLensProvider {
         const ppLens = new vscode.CodeLens(range, {
           title: '▶ Set PP here',
           command: 'abbRobot.setPPFromCodeLens',
-          arguments: [moduleName, name, kind],
+          arguments: [moduleName, name, kind, document.fileName],
         });
         lenses.push(ppLens);
       }

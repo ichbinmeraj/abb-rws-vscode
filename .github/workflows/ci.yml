@@ -4,6 +4,17 @@ on:
   push:
   pull_request:
 
+env:
+  # The client release tag the vendored tarball and the lock were built from (see
+  # the README's "Development" section): v<version> for the version package.json
+  # pins. The lock's sha512 only matches a tarball packed from this exact tag; when
+  # the pin moves to another client release, this tag, CLIENT_INTEGRITY and the lock
+  # move with it (test/hostVerdicts.test.ts checks that the three agree).
+  CLIENT_REF: v1.5.1
+  # The lock's integrity of that tarball; the vendor step checks the packed one
+  # against it before npm ci, so a tag that packs to another tarball says so.
+  CLIENT_INTEGRITY: sha512-/SKofeWCO4f0CdTgBz5c3zcx+AOZYgUDw5fDcCJM4dj2aqv9CBleGp+9TMFD9iTL+oTBt0ykuXcgnNy82hBuzA==
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,6 +24,68 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      # vendor/ is not in git: pack the client beside the checkout, at its release
+      # tag CLIENT_REF, into vendor/abb-rws-client-<version>.tgz before npm ci.
+      - run: git clone https://github.com/ichbinmeraj/abb-rws-client.git ../abb-rws-client
+      - run: git -C ../abb-rws-client checkout --detach "$CLIENT_REF"
+      - run: npm run vendor
       - run: npm ci
       - run: npm run build
       - run: npm run typecheck
+      - run: npm test
+
+  # The host harness (test/host) installs the packaged .vsix in a real VS Code and
+  # answers its dialogs by script. No controller is reachable from CI, so this job
+  # runs what needs none: the plain run, where every controller step (A-I, U2-U4)
+  # skips itself, and step U1 (language features on a small .mod, and every
+  # contributed command registered) in VS Code for Linux under xvfb. The owner runs
+  # the controller steps against a RobotStudio virtual controller with RWS_TEST_HOST.
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: git clone https://github.com/ichbinmeraj/abb-rws-client.git ../abb-rws-client
+      - run: git -C ../abb-rws-client checkout --detach "$CLIENT_REF"
+      - run: npm run vendor
+      - run: npm ci
+      - name: Host harness without a controller (every controller step skips itself)
+        run: npm run test:host
+      - name: Package the .vsix the harness installs
+        run: npm run package
+      - name: VS Code for Linux (latest stable) and xvfb
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/vscode.tar.gz" https://update.code.visualstudio.com/latest/linux-x64/stable
+          tar -xzf "$RUNNER_TEMP/vscode.tar.gz" -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/VSCode-linux-x64/bin/code" --version
+          command -v xvfb-run || (sudo apt-get update && sudo apt-get install -y xvfb)
+      # --no-sandbox: the runner does not give Electron's sandbox the user namespaces
+      # it needs; --password-store=basic: no keyring on the runner for the profile's
+      # secret storage. The profile is a throwaway one the harness deletes.
+      - name: Host step U1 (language features, command registry; no controller) under xvfb
+        id: u1
+        env:
+          RWS_TEST_ONLY: U1
+          VSCODE_EXE: ${{ runner.temp }}/VSCode-linux-x64/code
+          RWS_TEST_VSCODE_ARGS: --no-sandbox --disable-gpu --password-store=basic
+        run: xvfb-run -a npm run test:host
+      - name: What this job ran
+        if: always()
+        env:
+          U1: ${{ steps.u1.outcome }}
+        run: |
+          code_version="$("$RUNNER_TEMP/VSCode-linux-x64/bin/code" --version 2>/dev/null | head -1 || true)"
+          {
+            echo "### Host harness in CI"
+            echo "- Steps A-I and U2-U4 need a controller: not run here (no RWS_TEST_HOST), each skipped itself."
+            echo "- Step U1 in VS Code ${code_version:-(not downloaded)} for Linux under xvfb: ${U1:-not run}. Its record is test/host/last-run.md in the host-u1 artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: host-u1
+          path: test/host/last-run.md
+          if-no-files-found: warn

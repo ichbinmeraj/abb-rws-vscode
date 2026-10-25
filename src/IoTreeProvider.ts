@@ -107,7 +107,7 @@ export class IoTreeProvider implements vscode.TreeDataProvider<IoTreeItem> {
     }
 
     // Expanded search group: the pinned server-side results. Prefer the LIVE
-    // signal object from the polled snapshot when one exists - the frozen
+    // signal object from the polled snapshot when one exists - the fixed
     // search-time copy never updates, so rendering (and the toggle command,
     // which computes the write from lvalue) would act on stale values.
     if (element instanceof SearchGroupItem) {

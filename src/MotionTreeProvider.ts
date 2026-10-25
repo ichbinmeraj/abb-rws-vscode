@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { JOG_AXIS_VALUE_TOOLTIP, JOG_STEP_TOOLTIP, jogStatusText } from './jogText';
 import type { RobotManager } from 'abb-rws-client';
 
 class Item extends vscode.TreeItem {
@@ -95,25 +96,27 @@ export class MotionTreeProvider implements vscode.TreeDataProvider<vscode.TreeIt
 
     const opmode = this.manager.state.opmode;
     const ctrl   = this.manager.state.ctrlstate;
-    const jogReady = opmode !== 'AUTO' && ctrl === 'motoron';
-    const jogStatus = !jogReady
-      ? (opmode === 'AUTO' ? '⚠ AUTO mode - switch to MANR' : '⚠ motors off')
-      : `${mode} · ${inc}${mode === 'Joint' ? '°' : ' mm'} · speed ${speed}%`;
+    // The client sends a jog in any mode and with the motors off: the controller decides, and its own refusal is shown.
+    const jogReady = true;
+    const hints = [
+      opmode === 'AUTO' ? 'AUTO (the controller may refuse)' : '',
+      ctrl === 'motoron' ? '' : `motors ${ctrl ?? 'unknown'}`,
+    ].filter(Boolean);
+    const jogStatus = `${jogStatusText(mode, inc)}${hints.length ? ` · ${hints.join(' · ')}` : ''}`;
 
-    items.push(new Item('Jog Robot', jogStatus, 'arrow-swap', `Jog ready: ${jogReady}`));
-    items.push(new ActionItem('  Set increment…',  `${inc}${mode === 'Joint' ? '°' : ' mm'}`, 'gear', 'abbRobot.setJogIncrement', 'Change the per-click jog distance'));
-    items.push(new ActionItem('  Set speed…',      `${speed}%`,      'gear',   'abbRobot.setJogSpeed',     'Change the jog speed (0-100%)'));
-    items.push(new ActionItem('  Set mode…',       mode,             'gear',   'abbRobot.setJogMode',      'Switch between Joint and Cartesian jog'));
+    items.push(new Item('Jog Robot', jogStatus, 'arrow-swap', JOG_STEP_TOOLTIP));
+    items.push(new ActionItem('  Set axis value…', `${inc}`,           'gear',   'abbRobot.setJogIncrement', JOG_AXIS_VALUE_TOOLTIP));
+    items.push(new ActionItem('  Set speed…',      `${speed} (not sent)`, 'gear', 'abbRobot.setJogSpeed',     'Not sent: ABB\'s jog form has no speed field'));
+    items.push(new ActionItem('  Set mode…',       mode,             'gear',   'abbRobot.setJogMode',      'Axis labels only; the controller jogs in the mode of the unit selected for jogging'));
 
     if (jogReady) {
       const labels = mode === 'Joint'
         ? ['J1', 'J2', 'J3', 'J4', 'J5', 'J6']
         : ['X', 'Y', 'Z', 'Rx', 'Ry', 'Rz'];
       for (let i = 0; i < 6; i++) {
-        items.push(new ActionItem(`  ⬆ ${labels[i]} +${inc}`, '', 'arrow-up',   'abbRobot.jog', '', [i, +1]));
-        items.push(new ActionItem(`  ⬇ ${labels[i]} −${inc}`, '', 'arrow-down', 'abbRobot.jog', '', [i, -1]));
+        items.push(new ActionItem(`  ⬆ ${labels[i]} +${inc}`, '', 'arrow-up',   'abbRobot.jog', JOG_STEP_TOOLTIP, [i, +1]));
+        items.push(new ActionItem(`  ⬇ ${labels[i]} −${inc}`, '', 'arrow-down', 'abbRobot.jog', JOG_STEP_TOOLTIP, [i, -1]));
       }
-      items.push(new ActionItem('  ⏹ Stop Jog', 'sends axes=[0,0,0,0,0,0]', 'debug-stop', 'abbRobot.jogStop', 'Send a zero-jog command to halt any in-progress motion.'));
     }
 
     // ── Frames & Tools ───────────────────────────────────────────────────────

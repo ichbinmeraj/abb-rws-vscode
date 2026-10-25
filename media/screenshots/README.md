@@ -62,9 +62,9 @@ A `.mod` file open with multiple live features visible:
 ## After capturing all three
 
 1. Save as `hero.png`, `program-panel.png`, `editor-live.png` in this folder.
-2. Verify with: `ls D:/abb-rws-vscode/media/screenshots/` - you should see 3 PNGs + this README.
-3. Re-package: `cd D:/abb-rws-vscode && rm -f abb-rws-0.9.2.vsix && npx vsce package --no-dependencies`
-4. Smoke-test: `code --install-extension D:/abb-rws-vscode/abb-rws-0.9.2.vsix --force` then check Extensions → @installed → "RAPID Live" → click it to see the README rendered with images.
+2. Verify with: `ls media/screenshots/` (from the repository root) - you should see 3 PNGs + this README.
+3. Re-package: `npx @vscode/vsce package` in the repository root
+4. Smoke-test: `code --install-extension abb-rws-<version>.vsix --force` then check Extensions → @installed → "RAPID Live" → click it to see the README rendered with images.
 
 ---
 

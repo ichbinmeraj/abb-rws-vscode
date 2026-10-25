@@ -1,0 +1,77 @@
+name: Bug report
+description: Something does not work as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read [CONTRIBUTING.md](https://github.com/ichbinmeraj/abb-rws-vscode/blob/HEAD/CONTRIBUTING.md) first. Security problems go through [SECURITY.md](https://github.com/ichbinmeraj/abb-rws-vscode/blob/HEAD/SECURITY.md), not here.
+  - type: textarea
+    id: did
+    attributes:
+      label: "What you did"
+      description: "Steps, commands or calls, in order."
+    validations:
+      required: true
+  - type: textarea
+    id: answer
+    attributes:
+      label: "What the controller answered"
+      description: "Status code, retcode and an excerpt of the response body."
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: "RobotWare build string"
+      placeholder: "From /rw/system, e.g. 7.21.4+417"
+    validations:
+      required: true
+  - type: dropdown
+    id: rws
+    attributes:
+      label: "RWS version"
+      options:
+        - RWS 1.0 (IRC5 / RobotWare 6)
+        - RWS 2.0 (OmniCore / RobotWare 7 or 8)
+    validations:
+      required: true
+  - type: dropdown
+    id: target
+    attributes:
+      label: "Controller type"
+      options:
+        - Real controller
+        - RobotStudio virtual controller
+    validations:
+      required: true
+  - type: input
+    id: tool
+    attributes:
+      label: "RAPID Live extension version"
+      placeholder: ""
+    validations:
+      required: true
+  - type: input
+    id: vscode
+    attributes:
+      label: "VS Code version"
+      placeholder: "Help > About, e.g. 1.95.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: abbext
+    attributes:
+      label: "Is ABB's own RAPID extension installed?"
+      options:
+        - Yes
+        - No
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before submitting
+      options:
+        - label: "I removed credentials, IPs and host names from the logs"
+          required: true

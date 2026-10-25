@@ -3,8 +3,7 @@
 **Goal**: bring `RWS1Adapter` to the same ~115-method surface as `RWS2Adapter` so
 the extension behaves identically on IRC5 / RobotWare 6 and OmniCore / RobotWare 7.
 
-**Source of truth**: ABB RWS 1.0 Application Manual **3HAC050973-001 Rev M**
-(`D:\ABBRWS\RWS_API_Full_Reference.md`).
+**Source of truth**: ABB RWS 1.0 Application Manual **3HAC050973-001 Rev M**.
 
 ---
 
@@ -186,10 +185,7 @@ parse the JSON `_embedded._state` envelope, return typed result.
 | `setMechunitForJogging(unit)` | `POST /rw/motionsystem?action=set-mechunit&json=1` |
 | `setRobtargetForJogging(target)` | `POST /rw/motionsystem?action=set-target&json=1` |
 
-### Stage 15 - High-priority subscriptions (architectural)
-
-Convert per-signal and per-persvar subscriptions to use `priority=2` (high) so
-they get sub-200ms updates. Currently we use `priority=1` (medium, ~200ms-1s).
+### Stage 15 - not planned
 
 ---
 

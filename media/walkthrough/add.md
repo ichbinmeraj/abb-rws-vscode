@@ -4,17 +4,27 @@ The **Robots** panel lives in the ABB activity bar (left side, robot icon).
 
 ```
 ┌─ Robots ────────────────────┐
-│  [+ Add Robot]              │
-│  [Auto-detect VC]           │
+│  + Add Robot…               │
 └─────────────────────────────┘
 ```
 
-The wizard scans `127.0.0.1` and `192.168.125.1` automatically and lists any
-controllers it finds. RobotStudio virtual controllers use random ports; the
-extension wide-scans for them.
+The wizard reads this PC's listening ports and lists the RobotStudio virtual
+controllers it finds, whatever random port they got. It also probes
+`192.168.125.1` when your PC is cabled to a controller's service port, lists
+controllers that announce themselves over mDNS, and probes the addresses you
+saved with **Add address / range…**.
 
-For a real controller, enter the IP and credentials manually.
+For a real controller on another network, use **Enter address manually…** or
+**Add address / range…**, then enter credentials. A range is scanned only when
+you pick it, and the wizard asks first every time: on a company network IT can
+see the connection attempts.
 
-> The default `Admin` / `robotics` works on most OmniCore controllers and on
-> IRC5 with default UAS configuration. If your controller refuses, check
-> the FlexPendant: ABB menu → Control Panel → User Authorization.
+To forget a saved address or range, click the trash button next to it in the
+list, or use **Manage saved addresses and ranges…** to remove several or all.
+To remove a robot, click the trash icon on its row in the **Robots** panel.
+
+> For a virtual controller on this PC the wizard fills in `Admin` (RWS 2.0)
+> or `Default User` (RWS 1.0) with the password `robotics`. For a controller
+> on another machine, enter a user that exists on it. If your controller
+> refuses, check the FlexPendant: ABB menu → Control Panel → User
+> Authorization.

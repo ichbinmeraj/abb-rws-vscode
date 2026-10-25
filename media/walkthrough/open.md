@@ -16,8 +16,8 @@ into a new editor tab.
 The editor gets:
 
 - Syntax highlighting for `.mod` / `.sys` / `.prg` files
-- **Hover docs** for every documented RAPID instruction (705 entries from
-  the official ABB Technical Reference Manual)
+- **Hover signatures** for built-in RAPID instructions and functions - call
+  shape, parameter types, optional and switch arguments, return type
 - **Live variable hover** - hover any variable name to see its current
   controller value
 - **Inlay hints** - faded gray live values next to every `VAR` / `PERS` / `CONST`

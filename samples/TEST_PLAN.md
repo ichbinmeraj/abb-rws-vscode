@@ -106,13 +106,12 @@ against a real controller (or the OmniCore VC).
 1. `Ctrl+Shift+P` → **ABB Robot: Calculate Inverse Kinematics**
 2. Press Enter through all 7 prompts (X/Y/Z/Q1-Q4 are pre-filled with the
    robot's *current* TCP position).
-3. **On real hardware**: result shows J1-J6 in degrees.
-4. **On the OmniCore VC**: error notification "Position outside of reach"
-   (`SYS_CTRL_E_POSE_OUTSIDE_REACH`) - this is expected because virtual
-   controllers don't have the licensed kinematic-solver module.
+3. **On real hardware or a virtual controller**: result shows J1-J6 in degrees.
+4. Enter a pose out of reach (e.g. X = 5000): the controller's refusal is shown
+   as an error notification.
 
-**Pass criteria**: ✅ command runs without crashing; on real hardware
-returns a sensible J1-J6.
+**Pass criteria**: ✅ command runs without crashing; returns a sensible
+J1-J6 for a reachable pose.
 
 ---
 
@@ -178,7 +177,7 @@ real-time signal subscriptions (if enabled).
 
 ---
 
-## Scenario 9 - Configuration database (CFG) - the unique feature
+## Scenario 9 - Configuration database (CFG)
 
 **What it tests**: 4-level CFG tree (`listCfgDomains`, `listCfgTypes`
 paginated, `listCfgInstances`, `getCfgInstance`).
@@ -252,15 +251,15 @@ instance JSON loads with full attributes.
 
 ## Scenario 13 - Virtual Time (VC only)
 
-**What it tests**: `getVirtualTime`, `setVirtualTimeRunning`, `setVirtualTimeScale`.
+**What it tests**: `getVirtualTime`, `setVirtualTimeScale`.
 
 1. `Ctrl+Shift+P` → **ABB Robot: Show / Control Virtual Time**.
-2. Notification shows current vt (microseconds since boot).
+2. Notification shows the virtual time in seconds, running or paused, speed and state, and says why pause and resume are not offered.
 3. Click **Set scale 10x** - VC simulation now runs 10× real-time.
-4. Click again to **Pause/Resume**.
+4. Run the command again: there is no pause or resume button.
 5. Click **Set scale 1x** to go back to real-time.
 
-**Pass criteria**: ✅ scale changes persist.
+**Pass criteria**: ✅ scale changes persist; no pause or resume is offered.
 
 ---
 
@@ -313,8 +312,10 @@ If all 7 work, the extension is healthy.
 
 ## What's NOT in this test plan
 
-- **Jog motion** - ABB safety design blocks it from RWS by default. See
-  `docs/RWS_COVERAGE.md` for details.
+- **Jog motion** - Jog Robot sends the jog and shows the controller's answer;
+  the controller needs motors on, a manual mode and motion access. It is left out
+  of this plan because a remote jog has only been seen to succeed on a
+  RobotWare 8.2.1 virtual controller (README "Known limits").
 - **Mode switch AUTO ↔ MAN** - requires FlexPendant confirmation.
 - **Backup creation** - write op, leaves artifacts; test only when needed.
 

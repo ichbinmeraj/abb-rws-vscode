@@ -1,6 +1,15 @@
 import * as vscode from 'vscode';
 import type { MultiRobotManager } from 'abb-rws-client';
 import { Logger } from './Logger';
+import type { ConfirmRequest } from './confirm';
+
+type RobotEntry = MultiRobotManager['entries'][number];
+
+/** What the extension hands the provider: the write confirmation and the error dialog, both bound to a robot entry. */
+export interface WatchHooks {
+  confirm(entry: RobotEntry, request: ConfirmRequest): Promise<boolean>;
+  showError(label: string, e: unknown, entry?: RobotEntry): void;
+}
 
 /**
  * Variables (Watch) panel - live values for RAPID variables, the way
@@ -25,6 +34,8 @@ interface WatchEntry {
   value?: string;
   error?: string;
   lastUpdated?: number;
+  /** The robot the shown value was read from (set by the poll). */
+  robotId?: string;
 }
 
 const WATCH_STATE_KEY = 'abbRobot.watches.v1';
@@ -48,6 +59,7 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
   constructor(
     private manager: MultiRobotManager,
     private context: vscode.ExtensionContext,
+    private hooks: WatchHooks,
   ) {
     // Watches are per-workspace (different projects watch different robots).
     // Versions up to 0.9.3 stored them in globalState - migrate those entries
@@ -161,27 +173,39 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
   }
 
   async writeValue(arg: unknown): Promise<void> {
-    const entry = this.entryFromArg(arg);
-    if (!entry) { return; }
-    const active = this.manager.active;
-    if (!active) { vscode.window.showWarningMessage('No active robot.'); return; }
+    const row = this.entryFromArg(arg);
+    if (!row) { return; }
+    // The robot the row's value was read from, resolved once: the write, its
+    // confirmation and any error all go to that robot, not to whichever robot
+    // is active by the time the value is typed.
+    const targetId = row.robotId ?? this.manager.activeId;
+    const target = this.manager.entries.find(e => e.id === targetId);
+    if (!target) { vscode.window.showWarningMessage('No robot selected.'); return; }
+    if (!target.manager.state.connected) {
+      vscode.window.showWarningMessage(`${target.config.name} is not connected; the value shown for ${row.module}.${row.symbol} came from it.`);
+      return;
+    }
     const newValue = await vscode.window.showInputBox({
-      prompt: `New value for ${entry.module}.${entry.symbol}`,
-      value: entry.value ?? '',
+      prompt: `New value for ${row.module}.${row.symbol} on ${target.config.name}`,
+      value: row.value ?? '',
       placeHolder: 'RAPID literal - number, "string", [array], or [record]',
     });
     if (newValue === undefined) { return; }
+    const ok = await this.hooks.confirm(target, {
+      label: `Write ${row.module}.${row.symbol}`, tier: 'change',
+      sideEffects: [`Sets ${row.task}/${row.module}/${row.symbol} to ${newValue}${row.value !== undefined ? ` (now ${row.value})` : ''}. A running program sees the new value at once.`],
+    });
+    if (!ok) { return; }
     try {
-      await active.setRapidVariable(entry.task, entry.module, entry.symbol, newValue);
-      entry.value = newValue;
-      entry.error = undefined;
-      entry.lastUpdated = Date.now();
+      await target.manager.setRapidVariable(row.task, row.module, row.symbol, newValue);
+      row.value = newValue;
+      row.error = undefined;
+      row.lastUpdated = Date.now();
       this._onDidChange.fire();
-      vscode.window.setStatusBarMessage(`✓ ${entry.module}.${entry.symbol} = ${newValue}`, 3000);
+      vscode.window.setStatusBarMessage(`✓ ${row.module}.${row.symbol} = ${newValue} on ${target.config.name}`, 3000);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      vscode.window.showErrorMessage(`Write failed: ${msg}`);
-      Logger.error(`watch.write ${entry.module}.${entry.symbol}`, e);
+      Logger.error(`watch.write ${row.module}.${row.symbol}`, e);
+      this.hooks.showError('Write watched value', e, target);
     }
   }
 
@@ -197,8 +221,9 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
       this._onDidChange.fire();
       return;
     }
-    const active = this.manager.active;
-    if (!active) { this._onDidChange.fire(); return; }
+    const entry = this.manager.entries.find(e => e.id === this.manager.activeId);
+    if (!entry) { this._onDidChange.fire(); return; }
+    const active = entry.manager;
 
     this.polling = true;
     this.lastPollAt = now;
@@ -209,6 +234,7 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
         try {
           const v = await active.getRapidVariable(w.task, w.module, w.symbol);
           w.value = v;
+          w.robotId = entry.id;
           w.error = undefined;
           w.lastUpdated = Date.now();
         } catch (e) {

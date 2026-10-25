@@ -1,0 +1,43 @@
+name: Controller behaviour
+description: A RobotWare behaviour or documentation difference you can reproduce
+labels: ["controller-behaviour"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read [CONTRIBUTING.md](https://github.com/ichbinmeraj/abb-rws-vscode/blob/HEAD/CONTRIBUTING.md) first. Security problems go through [SECURITY.md](https://github.com/ichbinmeraj/abb-rws-vscode/blob/HEAD/SECURITY.md), not here.
+  - type: textarea
+    id: request
+    attributes:
+      label: "The request"
+      description: "Method, path and body you sent."
+    validations:
+      required: true
+  - type: textarea
+    id: answer
+    attributes:
+      label: "The answer"
+      description: "Status, retcode and an excerpt of the response body."
+    validations:
+      required: true
+  - type: textarea
+    id: builds
+    attributes:
+      label: "Builds it reproduced on"
+      description: "RobotWare build strings from /rw/system, one per line, e.g. 7.21.4+417. Say whether each is a real controller or a RobotStudio virtual controller."
+    validations:
+      required: true
+  - type: input
+    id: abbpage
+    attributes:
+      label: "ABB page it concerns"
+      placeholder: "Document number and revision, with the page or section"
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before submitting
+      options:
+        - label: "I have reproduced it on at least two builds or marked it single-build"
+          required: true

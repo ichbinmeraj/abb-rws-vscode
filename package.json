@@ -1,8 +1,8 @@
 {
   "name": "abb-rws",
-  "displayName": "RAPID Live - ABB Robotics for VS Code",
-  "version": "1.2.0",
-  "description": "The only VS Code extension that connects to live ABB IRC5 (RobotWare 6) and OmniCore (RobotWare 7/8) controllers. Live-tested on RW8.1, RW7.21 and RW6.16. RAPID language server (hover docs, autocomplete, signature help, go-to-definition, inlay hints with live values, CodeLens), git-style push/pull/diff workflow for .mod files, multi-robot management, real-time WebSocket subscriptions, IK + FK, file/IO/event-log access, variable watch panel, dual RWS 1.0 + 2.0 protocol support.",
+  "displayName": "RAPID Live for ABB Robots",
+  "version": "1.4.0",
+  "description": "VS Code extension that connects to live ABB IRC5 (RobotWare 6) and OmniCore (RobotWare 7/8) controllers; runs alongside ABB's own RAPID extension. Tested on RobotStudio virtual controllers (RW 8.2.1, 7.21.4, 6.16.03). RAPID language server (hover signatures, autocomplete, signature help, go-to-definition, inlay hints with live values, CodeLens), git-style push/pull/diff workflow for .mod files, multi-robot management, real-time WebSocket subscriptions, IK + FK, file/IO/event-log access, variable watch panel, dual RWS 1.0 + 2.0 protocol support.",
   "publisher": "merajsafari",
   "author": {
     "name": "Meraj Safari"
@@ -24,8 +24,10 @@
     "RobotWare",
     "RobotWare 6",
     "RobotWare 7",
+    "RobotWare 8",
     "RW6",
     "RW7",
+    "RW8",
     "RobotStudio",
     "automation",
     "robotics",
@@ -148,18 +150,71 @@
           "default": false,
           "description": "Verify controller TLS certificates on HTTPS connections (OmniCore / RWS 2.0). Off by default because controllers ship with self-signed certificates that fail verification. Turn on only if you have installed a proper certificate on the controller."
         },
+        "abbRobot.discoveryManual": {
+          "type": "array",
+          "scope": "machine",
+          "default": [],
+          "maxItems": 16,
+          "markdownDescription": "Addresses the **Add Robot** scan probes every time, besides this PC. Each entry: `{ \"host\": \"10.0.5.20\" }`, optionally with `\"port\"` and `\"https\"`. Without a port, another machine gets ports 443 and 80 (plus `#abbRobot.discoveryPorts#`). At most 16. Add entries with **Add address / range…** in the Add Robot picker. User settings only: a workspace cannot set this.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "host": {
+                "type": "string",
+                "description": "IPv4 address or host name (RobotWare does not support IPv6)"
+              },
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535,
+                "description": "RWS port. Omit to try the standard ports."
+              },
+              "https": {
+                "type": "boolean",
+                "description": "Probe this scheme only. Omit to try HTTPS first, and HTTP where the port is open but not TLS."
+              }
+            },
+            "required": [
+              "host"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "abbRobot.discoveryRanges": {
+          "type": "array",
+          "scope": "machine",
+          "default": [],
+          "maxItems": 16,
+          "markdownDescription": "Saved IPv4 ranges, CIDR `10.0.5.0/24` or dash `10.0.5.20-10.0.5.60`, private addresses only, at most 256 addresses per scan. A range is never scanned on its own: the Add Robot picker lists it, and every range scan asks first. Scanning a range opens TCP connections to every address in it. On a company network IT can see these attempts, and intrusion detection may flag them. User settings only: a workspace cannot set this.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "abbRobot.discoveryPorts": {
+          "type": "array",
+          "scope": "machine",
+          "default": [],
+          "maxItems": 8,
+          "uniqueItems": true,
+          "markdownDescription": "Extra RWS ports tried on saved addresses and range addresses that have no port of their own (and on the service port address). Each adds up to 2 connection attempts per address. At most 8. User settings only: a workspace cannot set this.",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          }
+        },
         "abbRobot.jog.increment": {
           "type": "number",
           "default": 1,
           "minimum": 0,
-          "description": "Jog distance per click - degrees in Joint mode, mm in Cartesian mode"
+          "description": "The axis value each Jog click sends (ABB's axis1..axis6). ABB documents it without a unit, so it is not degrees or millimetres: the button sets the sign, which is the direction, and one click is one jog step. The extension sends the smallest increment size (Small); on RobotWare 8.2.1 a value of 1 moved axis 5 about 0.01 degree. What a larger value does is not documented."
         },
         "abbRobot.jog.speed": {
           "type": "number",
           "default": 10,
           "minimum": 0,
           "maximum": 100,
-          "description": "Jog speed (0-100). Start low until you trust the jog increment."
+          "description": "Not sent: ABB's jog form has no speed field. Kept for compatibility; it changes nothing on the controller."
         },
         "abbRobot.jog.mode": {
           "type": "string",
@@ -168,7 +223,7 @@
             "Joint",
             "Cartesian"
           ],
-          "description": "Joint jogs single axes; Cartesian jogs the tool in world coordinates."
+          "description": "Not sent: ABB's jog form has no mode field; the controller jogs in the jog mode of the unit selected for jogging. This only chooses the axis labels in the Motion view (J1-J6, or X, Y, Z, Rx, Ry, Rz)."
         }
       }
     },
@@ -199,9 +254,21 @@
       },
       {
         "command": "abbRobot.removeRobot",
-        "title": "Remove Robot",
+        "title": "Remove Robot…",
         "category": "ABB Robot",
         "icon": "$(trash)"
+      },
+      {
+        "command": "abbRobot.manageSavedAddresses",
+        "title": "Manage Saved Addresses and Ranges…",
+        "category": "ABB Robot",
+        "icon": "$(list-selection)"
+      },
+      {
+        "command": "abbRobot.clearSavedAddresses",
+        "title": "Remove All Saved Addresses and Ranges…",
+        "category": "ABB Robot",
+        "icon": "$(clear-all)"
       },
       {
         "command": "abbRobot.connectRobot",
@@ -256,6 +323,17 @@
         "title": "Stop RAPID",
         "category": "ABB Robot",
         "icon": "$(debug-stop)"
+      },
+      {
+        "command": "abbRobot.allowMotionControl",
+        "title": "Allow Motion Control (RobotWare 8)…",
+        "category": "ABB Robot",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "abbRobot.withdrawMotionControl",
+        "title": "Withdraw Motion Control (RobotWare 8)",
+        "category": "ABB Robot"
       },
       {
         "command": "abbRobot.resetRapid",
@@ -634,12 +712,6 @@
         "icon": "$(arrow-swap)"
       },
       {
-        "command": "abbRobot.jogStop",
-        "title": "Stop Jog",
-        "category": "ABB Robot",
-        "icon": "$(debug-stop)"
-      },
-      {
         "command": "abbRobot.setJogIncrement",
         "title": "Set Jog Increment…",
         "category": "ABB Robot",
@@ -924,7 +996,7 @@
           {
             "id": "open",
             "title": "Open a loaded module",
-            "description": "In the **Modules** panel, find a program module (`MotionTest`, `user`, etc.) and click the **Open in Editor** icon. The live RAPID source from the controller opens in a new editor tab - fully syntax-highlighted, with hover docs from the official manual.",
+            "description": "In the **Modules** panel, find a program module (`MotionTest`, `user`, etc.) and click the **Open in Editor** icon. The live RAPID source from the controller opens in a new editor tab - fully syntax-highlighted, with the signature and parameter types of built-in instructions on hover.",
             "completionEvents": [
               "onCommand:abbRobot.openModuleSource"
             ],
@@ -958,6 +1030,16 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "abbRobot.allowMotionControl",
+          "when": "abbRobot.connected && abbRobot.activeRw8 && !abbRobot.activeFixedStation"
+        },
+        {
+          "command": "abbRobot.withdrawMotionControl",
+          "when": "abbRobot.motionWithdrawable || abbRobot.connected && abbRobot.activeRw8"
+        }
+      ],
       "editor/context": [
         {
           "command": "abbRobot.addSelectionToWatch",
@@ -1004,6 +1086,21 @@
           "command": "abbRobot.addRobot",
           "when": "view == abbRobot.robots",
           "group": "navigation@1"
+        },
+        {
+          "command": "abbRobot.manageSavedAddresses",
+          "when": "view == abbRobot.robots",
+          "group": "2_saved@1"
+        },
+        {
+          "command": "abbRobot.clearSavedAddresses",
+          "when": "view == abbRobot.robots",
+          "group": "2_saved@2"
+        },
+        {
+          "command": "abbRobot.removeRobot",
+          "when": "view == abbRobot.robots",
+          "group": "3_robots@1"
         },
         {
           "command": "abbRobot.connect",
@@ -1124,13 +1221,38 @@
         },
         {
           "command": "abbRobot.disconnectRobot",
-          "when": "viewItem == robot.connected || viewItem == robot.connected.active",
+          "when": "viewItem =~ /^robot\\.connected(\\.active)?(\\.motion)?$/",
           "group": "inline@1"
         },
         {
           "command": "abbRobot.removeRobot",
-          "when": "viewItem =~ /^robot\\./",
+          "when": "view == abbRobot.robots && viewItem =~ /^robot\\.(connected|disconnected)/",
           "group": "inline@2"
+        },
+        {
+          "command": "abbRobot.connectRobot",
+          "when": "view == abbRobot.robots && viewItem =~ /^robot\\.disconnected/",
+          "group": "1_connection@1"
+        },
+        {
+          "command": "abbRobot.disconnectRobot",
+          "when": "view == abbRobot.robots && viewItem =~ /^robot\\.connected/",
+          "group": "1_connection@1"
+        },
+        {
+          "command": "abbRobot.setActiveRobot",
+          "when": "view == abbRobot.robots && viewItem =~ /^robot\\.(connected(\\.motion)?|disconnected)$/",
+          "group": "1_connection@2"
+        },
+        {
+          "command": "abbRobot.withdrawMotionControl",
+          "when": "view == abbRobot.robots && viewItem =~ /^robot\\.connected(\\.active)?\\.motion$/",
+          "group": "2_motion@1"
+        },
+        {
+          "command": "abbRobot.removeRobot",
+          "when": "view == abbRobot.robots && viewItem =~ /^robot\\.(connected|disconnected)/",
+          "group": "9_remove@1"
         },
         {
           "command": "abbRobot.openControllerFile",
@@ -1273,12 +1395,15 @@
   "scripts": {
     "build": "node build.js",
     "watch": "node build.js --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "node build.js --tests && node --test out/test/*.test.js",
+    "test:host": "node --test test/host/run-commands.test.js",
     "vscode:prepublish": "npm run build && npm run typecheck",
-    "package": "npx vsce package"
+    "vendor": "node scripts/vendor.mjs",
+    "package": "npx @vscode/vsce package"
   },
   "dependencies": {
-    "abb-rws-client": "file:vendor/abb-rws-client-1.3.1.tgz"
+    "abb-rws-client": "file:vendor/abb-rws-client-1.5.1.tgz"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",

@@ -1,0 +1,10 @@
+{
+  "name": "rapid-live-host-test",
+  "displayName": "RAPID Live host test runner",
+  "description": "Placeholder development extension: VS Code runs --extensionTestsPath only next to one. The extension under test is the installed .vsix.",
+  "version": "0.0.0",
+  "publisher": "hosttest",
+  "private": true,
+  "engines": { "vscode": "^1.85.0" },
+  "activationEvents": []
+}

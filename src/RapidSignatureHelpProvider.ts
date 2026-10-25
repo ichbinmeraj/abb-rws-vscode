@@ -15,8 +15,8 @@ import { Logger } from './Logger';
  * function calls use `(args)`, instructions use space-separated args - so
  * we accept both.
  *
- * Backed by the same JSON DB as the hover and completion providers (705
- * entries from ABB Technical Reference 3HAC050917-001 Rev F).
+ * Backed by the same signatures-only JSON DB as the hover and completion
+ * providers (705 entries: name, kind, parameters with types, return type).
  */
 
 interface Parameter {
@@ -31,8 +31,8 @@ interface Parameter {
 interface RapidEntry {
   kind: 'instruction' | 'function' | 'datatype' | 'keyword';
   name: string;
-  brief: string;
-  syntax: string;
+  /** Neutral one-liner built from kind and return type ("RAPID function returning num"). */
+  summary: string;
   parameters?: Parameter[];
 }
 
@@ -193,7 +193,7 @@ export class RapidSignatureHelpProvider implements vscode.SignatureHelpProvider 
       ? `${e.name}(${paramLabels.join(', ')})`
       : `${e.name} ${paramLabels.join(', ')}`;
     const sig = new vscode.SignatureInformation(callShape);
-    sig.documentation = new vscode.MarkdownString(e.brief);
+    sig.documentation = new vscode.MarkdownString(e.summary);
     sig.parameters = params.map(p => {
       const label = p.optional ? `[${p.name}]` : p.name;
       const info  = new vscode.ParameterInformation(label);
