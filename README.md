@@ -64,28 +64,15 @@ In a Remote - WSL, SSH or Dev Containers window the scan runs on the remote side
 
 ---
 
-## How it differs from ABB's RAPID & Ecosystem Tools
+## Other VS Code extensions for ABB robots
 
-ABB's RAPID & Ecosystem Tools 0.1.0 (checked 2026-10-10) is an editor extension - a RAPID grammar, hover, completion, an outline and a formatter. It does not connect to a controller. The two run side by side (see [Pair with the official ABB extension](#pair-with-the-official-abb-extension)).
+ABB's own RAPID & Ecosystem Tools (0.3.0, checked 2026-10-28) is an editor extension. It has a RAPID grammar, hover, completion, go to definition, an outline and a formatter. It also covers CFG and install.cmd files. It does not connect to a controller. The two run side by side. We last tested them together on 2026-10-29 with ABB 0.3.0 (see [Use it with ABB's extension](#use-it-with-abbs-extension)).
 
-| Feature | RAPID Live | RAPID & Ecosystem Tools 0.1.0 |
-|---|:---:|:---:|
-| Syntax highlighting + snippets | ✓ | ✓ |
-| Hover signatures + completion for built-ins | ✓ | ✓ |
-| Formatter | ✗ | ✓ |
-| **Live controller connection** | **✓** | ✗ |
-| **Live variable values inline** | **✓** | ✗ |
-| **Push / Pull / Diff** workflow | **✓** | ✗ |
-| Multi-robot management | **✓** | ✗ |
-| Real-time WebSocket subscriptions | **✓** | ✗ |
-| Module load/unload + routine drill-down | **✓** | ✗ |
-| File system + I/O + CFG access | **✓** | ✗ |
-| Event log with severity + details | **✓** | ✗ |
-| Inverse + forward kinematics | **✓** | ✗ |
-| Node.js APIs only (macOS / Linux not yet tried) | **✓** | n/a |
-| Built on a published TS RWS client | **✓** | n/a |
+Some community extensions also connect to a controller over Robot Web Services, to IRC5 and to OmniCore. Some of them offer controller breakpoints in the debugger, a guarded module deploy or a live watch list.
 
-We don't compete with RobotStudio's 3D simulation or cell design - that's a different category. We do the **dev loop**: connect, monitor, edit, deploy, repeat.
+What RAPID Live brings: several controllers in one window, backup and restore, the configuration database, IK and FK, and a Motion Control switch on RobotWare 8 that you turn on and off yourself. It is built on abb-rws-client, a published RWS client you can use in your own code.
+
+We don't compete with RobotStudio's 3D simulation or cell design. That is a different category. We do the dev loop: connect, monitor, edit, deploy, repeat.
 
 ---
 
@@ -103,19 +90,11 @@ Open any `.mod` / `.sys` / `.prg` file while connected and the editor lights up:
 
 ## Git workflow for RAPID
 
-The point of RAPID Live: edit at your desk, version-control in git, deploy to the robot. None of that flow exists in RobotStudio.
+The point of RAPID Live: edit at your desk, keep the code in git, deploy to the robot. The modules are plain files in your VS Code workspace, so git and the VS Code diff work on them like on any other code.
 
-```
-┌─ Pull All Modules from Controller ─┐         ┌─ Push Current File ─┐
-│                                     │         │                     │
-│   Workspace folder ←  controller   │  edit   │  workspace ── push ──→ controller
-│   (now in git)                     │ ────────│                       │
-└─────────────────────────────────────┘         └─────────────────────┘
-```
-
-- **Pull All Modules** - bulk download every loaded program module into your workspace as `.mod` files.
-- **Push Current File** - load the active `.mod` into the running task. Right-click in the editor, the title bar, or the file explorer.
-- **Diff with Controller** - VS Code's native diff editor between your local file and what's currently loaded. Read-only on the controller side, no risk of clobbering.
+- **Pull All Modules** - download every loaded program module of one task into your workspace as `.mod` files. On a system with more than one active task it asks which task. It remembers the task each file came from.
+- **Push Current File** - load the active `.mod` into its task: the task the file was pulled from, else the one task that has the module loaded, else the task you pick from a list that names the robot. Right-click in the editor, the title bar, or the file explorer. Push leaves the program pointer where it is. For a file with `PROC main`, its message offers **PP to Main…**, which asks first and names the tasks it moves.
+- **Diff with Controller** - VS Code's diff editor between your local file and the module as loaded in the same task. Read-only on the controller side.
 
 ---
 
@@ -147,15 +126,15 @@ The package ships with the full `RobotManager` lifecycle, `MultiRobotManager` or
 - It does not answer the RMMP prompt; the pendant does.
 - It does not change UAS user grants; UAS configuration is done at the FlexPendant.
 - It does not use the key switch of a real controller.
-- It allows RobotWare 8 motion control only when you run Allow Motion Control (RobotWare 8), or choose Allow Motion Control first… in a start or jog confirmation, and confirm by typing the robot's name that an emergency stop and a normal stop are within your reach. It withdraws it when you disconnect or choose Withdraw Motion Control, and tries to when you close the window. ABB's PC SDK lets a tool allow it automatically, on virtual controllers only. RAPID Live asks every time, so it behaves the same on a real controller.
+- It allows RobotWare 8 motion control only when you run Allow Motion Control (RobotWare 8), or choose Allow Motion Control first… in a start or jog confirmation, and confirm by typing the robot's name that an emergency stop and a normal stop are within your reach. It withdraws it when you disconnect or choose Withdraw Motion Control, and tries to when you close the window. ABB's PC SDK has an automatic setting for this, and ABB allows it on virtual controllers and not on real ones. On a real controller the tool has to turn it on itself, and ABB asks it to confirm both stops first. RAPID Live asks you every time, on a virtual controller and on a real one.
 - It gives no emergency stop and no normal stop. Stop RAPID is a program stop sent over the network; the stops are at the FlexPendant.
 - A jog in AUTO is sent like any other and the controller decides; its answer is shown.
 - It has no jog stop button: one click is one jog step, so no jog is left running. Stop robot motion at the FlexPendant or with the emergency stop.
+- It collects no telemetry. It sends nothing about you or your use to anyone. It talks to the controllers you connect to and, when you scan, to the addresses listed under [Finding controllers](#finding-controllers).
 
 Coming soon:
 
 - **Robot panel** - a dedicated interactive panel view for the whole cell: jog, I/O at a glance, signal search, production monitoring. In active development.
-- Step debugging UI (Step Into / Over / Out + breakpoint sync).
 - Hot-edit / ModPos in a running program.
 
 ---
@@ -170,7 +149,6 @@ virtual controller first.
 
 ### Open at this release
 
-- Multi-task systems (MultiMove, or more than one active task), in 1.4.0: Push Current File to Controller, Load Program from File, Diff Current File with Controller and the program pointer move of Call Service Routine use the first active task, whatever task the module belongs to. Push and Load Program from File also move the program pointer to main for the whole execution when the file has `PROC main`. Until 1.4.1, do these from the FlexPendant or RobotStudio on a multi-task system. The fix comes in 1.4.1.
 - Every success the client has logged comes from RobotStudio virtual controllers; a real controller may refuse what a virtual one accepted (the operating-mode switch, for one), so try a command on a virtual controller first and take the controller's refusal as final.
 - RobotWare 6: `abb-rws-client` has no RWS 1.0 form for Modify Position yet, although ABB documents one; modify positions at the FlexPendant. Its RWS 1.0 forms for signal simulation, unblocking signals and enabling or disabling an I/O device are built from ABB's RWS 1.0 pages and not yet run. Its RWS 1.0 forms for setting a base frame, the keyless motors-on and reading the task selection ran on a 6.16.03 virtual controller. ABB's RWS 1.0 has no breakpoint removal, and neither generation has a write for the whole task selection: Activate Task and Deactivate Task, offered on both, change one task at a time.
 - RAPID Live has no command for Modify Position, removing a breakpoint, setting a base frame, signal simulation, unblocking signals, enabling or disabling an I/O device, or the keyless motors-on, on any generation.
@@ -229,9 +207,13 @@ virtual-time speed (the write on RWS 2.0, the read on both generations).
 
 ---
 
-## Pair with the official ABB extension
+## Use it with ABB's extension
 
-ABB's own [RAPID & Ecosystem Tools](https://marketplace.visualstudio.com/items?itemName=abb-robotics-ecosystem.abb-robotics) provides additional language-level features, including a formatter. Measured together on VS Code 1.140.0 with ABB 0.1.0 and a RAPID Live build prepared as 1.3.0 (not published; its changes ship in 1.4.0): `.mod`, `.sys` and `.prg` open as `rapid`, RAPID Live's grammar colours them, ABB's formatter is the sole formatter and runs by default, and all RAPID Live commands are present; hover, completion and the outline show entries from both. No setting is needed. Details: [docs/coexistence.md](docs/coexistence.md).
+ABB's own [RAPID & Ecosystem Tools](https://marketplace.visualstudio.com/items?itemName=abb-robotics-ecosystem.abb-robotics) provides additional language-level features, including a formatter. Measured together on 2026-10-29 with VS Code 1.143.1, ABB 0.3.0 and RAPID Live 1.4.0, in both install orders: `.mod`, `.sys` and `.prg` open as `rapid`, RAPID Live's grammar colours them, ABB's formatter is the sole formatter and runs by default, and all RAPID Live commands are present. Hover, completion and the outline show entries from both. No setting is needed.
+
+Since 0.3.0, ABB's extension also sets fixed colours for some RAPID tokens. Three of them are tokens RAPID Live's grammar gives too: flow keywords such as `IF` and `ENDIF`, strings and numbers. With both installed those show in ABB's colours in every theme, while `PROC`, `MODULE`, comments and instructions keep the theme's colours. Neither extension has a setting for it.
+
+ABB RAPID Pack, a community extension, turns format on save on for RAPID files when it is installed. Push Current File saves an edited file before it sends it, so with more than one RAPID extension installed, check what a save does to your file. Details: [docs/coexistence.md](docs/coexistence.md).
 
 ---
 
@@ -284,6 +266,15 @@ overwrites local files of the same name in the destination folder (**Pull**). Wh
 controller refuses a load, an unload or a pointer move because the program runs, the
 extension asks whether to stop it first (**Stop Program and Continue**).
 
+Every command that acts on one RAPID task takes the same task. That is the task the file
+was pulled from, else the one task that has the module loaded, else the one active task.
+When none of these settles it, as on a MultiMove system with a new module, the extension
+asks which task in a list that names the robot, and a dismissed list sends nothing. Load
+Program from File and Push Current File leave the program pointer where it is. For a file
+with `PROC main` their message offers **PP to Main…**, which lists the tasks it moves behind
+one button, **Continue on <name>**. On a multi-task system that is every task the
+execution runs, the other tasks as well as the one the file went to.
+
 The confirmation is the extension's, in front of the controller's own checks: the
 controller still decides every write (mastership or write access, the operating mode, the
 safety state), and a refusal is shown with the client's sentence saying what is missing
@@ -331,9 +322,11 @@ FlexPendant instead of offering Allow Motion Control, and the command refuses it
 offline and has not run against a controller; Allow Motion Control, Run Routine after it, Withdraw and the disconnect's withdrawal ran on an
 8.2.1 virtual controller (see [Known limits](#known-limits)).
 
-## Safety notes
+## Before you connect to a real cell
 
-This extension can change controller state - turn motors on, start RAPID, write I/O signals. Read the [ABB safety documentation](https://search.abb.com/library/Download.aspx?DocumentID=3HAC020738-001&LanguageCode=en) for your robot before using these features outside a sandbox.
+RAPID Live has been tested on RobotStudio virtual controllers and has not yet run against a real controller. Its confirmations are there so that a click goes to the robot you meant. They are not safety functions. They do not replace the controller's own checks, the FlexPendant, or the stops and safeguards of your cell. ABB's safety manual for your robot and controller applies to everything you do with it, and so do your site's rules.
+
+By default RAPID Live does not check the controller's TLS certificate, because OmniCore controllers ship with a self-signed one. To check it, install a certificate on the controller that your PC trusts, turn on the `abbRobot.strictTls` setting, then reload the window. RobotWare 6 (IRC5) has no TLS: RWS 1.0 is plain HTTP with Digest authentication.
 
 ---
 
@@ -388,6 +381,8 @@ Contributions are accepted under the DCO - see [CONTRIBUTING.md](./CONTRIBUTING.
 ## Disclaimer
 
 Independent open-source project by [Meraj Safari](https://github.com/ichbinmeraj).
-ABB, IRC5, OmniCore, RobotWare, RobotStudio, RAPID and FlexPendant are trademarks
-of ABB Ltd. **This project is not affiliated with, endorsed by, or supported by
-ABB Ltd.** Project names and trademark position: see [TRADEMARKS.md](./TRADEMARKS.md).
+ABB is a trademark of ABB Asea Brown Boveri Ltd. IRC5, OmniCore, RobotWare, RobotStudio,
+RAPID and FlexPendant are trademarks of their respective owners. **This project is not
+affiliated with, endorsed by, sponsored by or supported by ABB, ABB Robotics or any later
+owner of these products.** Project names and trademark position: see
+[TRADEMARKS.md](./TRADEMARKS.md).

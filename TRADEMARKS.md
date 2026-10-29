@@ -1,16 +1,17 @@
 # Trademarks and project names
 
-## ABB's marks
+## The marks named here
 
-ABB, IRC5, OmniCore, RobotWare, RobotStudio, RAPID, FlexPendant, GoFa and
-Robot Web Services are trademarks or registered trademarks of ABB Ltd.
+ABB is a trademark of ABB Asea Brown Boveri Ltd. IRC5, OmniCore, RobotWare,
+RobotStudio, RAPID, FlexPendant, GoFa and Robot Web Services are trademarks or
+registered trademarks of their respective owners.
 
-**This project is not affiliated with, endorsed by, sponsored by, or supported
-by ABB Ltd.** It is an independent, clean-room implementation built from
-publicly available documentation and from observed behaviour of controllers the
-maintainer operates.
+**This project is not affiliated with, endorsed by, sponsored by or supported by
+ABB, ABB Robotics or any later owner of these products.** It is an independent,
+clean-room implementation built from publicly available documentation and from
+the observed behaviour of RobotStudio virtual controllers.
 
-## Why ABB's marks appear here
+## Why these marks appear here
 
 They appear for one reason only: to describe accurately what this software is
 compatible with. Software that speaks ABB Robot Web Services cannot be described

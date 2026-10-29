@@ -5,10 +5,12 @@ import type { ConfirmRequest } from './confirm';
 
 type RobotEntry = MultiRobotManager['entries'][number];
 
-/** What the extension hands the provider: the write confirmation and the error dialog, both bound to a robot entry. */
+/** What the extension hands the provider: the write confirmation and the error dialog, both bound to a robot entry, and the task rule. */
 export interface WatchHooks {
   confirm(entry: RobotEntry, request: ConfirmRequest): Promise<boolean>;
   showError(label: string, e: unknown, entry?: RobotEntry): void;
+  /** The task a module's variable is in, on the active robot (src/taskResolver.ts); undefined = add nothing. */
+  taskFor(module: string): Promise<string | undefined>;
 }
 
 /**
@@ -114,11 +116,6 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
       vscode.window.showWarningMessage('Connect first.');
       return;
     }
-    const tasks = this.manager.state.tasks.map(t => t.name);
-    const taskName = tasks.length === 1 ? tasks[0] :
-      await vscode.window.showQuickPick(tasks.length ? tasks : ['T_ROB1'], { placeHolder: 'Pick the RAPID task' });
-    if (!taskName) { return; }
-
     const moduleName = await vscode.window.showInputBox({
       prompt: 'Module name (e.g. MotionTest, user, BASE)',
       placeHolder: 'MotionTest',
@@ -132,6 +129,11 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
       validateInput: v => v.trim() ? undefined : 'Symbol name required',
     });
     if (!symbolName) { return; }
+
+    // The task by the one rule: the one task that lists the module, the one
+    // active task, or the person picks.
+    const taskName = await this.hooks.taskFor(moduleName.trim());
+    if (!taskName) { return; }
 
     if (this.watches.some(w => w.task === taskName && w.module === moduleName && w.symbol === symbolName)) {
       vscode.window.showInformationMessage('That variable is already in the watch list.');
@@ -186,13 +188,13 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
       return;
     }
     const newValue = await vscode.window.showInputBox({
-      prompt: `New value for ${row.module}.${row.symbol} on ${target.config.name}`,
+      prompt: `New value for ${row.module}.${row.symbol} in ${row.task} on ${target.config.name}`,
       value: row.value ?? '',
       placeHolder: 'RAPID literal - number, "string", [array], or [record]',
     });
     if (newValue === undefined) { return; }
     const ok = await this.hooks.confirm(target, {
-      label: `Write ${row.module}.${row.symbol}`, tier: 'change',
+      label: `Write ${row.module}.${row.symbol} in ${row.task}`, tier: 'change',
       sideEffects: [`Sets ${row.task}/${row.module}/${row.symbol} to ${newValue}${row.value !== undefined ? ` (now ${row.value})` : ''}. A running program sees the new value at once.`],
     });
     if (!ok) { return; }
@@ -202,7 +204,7 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
       row.error = undefined;
       row.lastUpdated = Date.now();
       this._onDidChange.fire();
-      vscode.window.setStatusBarMessage(`✓ ${row.module}.${row.symbol} = ${newValue} on ${target.config.name}`, 3000);
+      vscode.window.setStatusBarMessage(`✓ ${row.module}.${row.symbol} = ${newValue} in ${row.task} on ${target.config.name}`, 3000);
     } catch (e) {
       Logger.error(`watch.write ${row.module}.${row.symbol}`, e);
       this.hooks.showError('Write watched value', e, target);

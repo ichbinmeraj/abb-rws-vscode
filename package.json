@@ -1,7 +1,7 @@
 {
   "name": "abb-rws",
   "displayName": "RAPID Live for ABB Robots",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "VS Code extension that connects to live ABB IRC5 (RobotWare 6) and OmniCore (RobotWare 7/8) controllers; runs alongside ABB's own RAPID extension. Tested on RobotStudio virtual controllers (RW 8.2.1, 7.21.4, 6.16.03). RAPID language server (hover signatures, autocomplete, signature help, go-to-definition, inlay hints with live values, CodeLens), git-style push/pull/diff workflow for .mod files, multi-robot management, real-time WebSocket subscriptions, IK + FK, file/IO/event-log access, variable watch panel, dual RWS 1.0 + 2.0 protocol support.",
   "publisher": "merajsafari",
   "author": {
@@ -39,8 +39,7 @@
   },
   "categories": [
     "Programming Languages",
-    "Other",
-    "Debuggers"
+    "Other"
   ],
   "activationEvents": [],
   "main": "./dist/extension.js",

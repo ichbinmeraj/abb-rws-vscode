@@ -421,7 +421,7 @@ describe('Edit Watched Value is bound to the row\'s robot', () => {
   });
 
   it('the extension hands the provider its confirmation and its bound error dialog', () => {
-    assert.ok(ext.includes('new VariableWatchProvider(multi, context, { confirm, showError })'));
+    assert.match(ext, /new VariableWatchProvider\(multi, context, \{\s*confirm, showError,\s*taskFor: module => taskForModule\(activeEntry\(multi\), module, 'Add Variable to Watch'\),\s*\}\)/);
   });
 });
 

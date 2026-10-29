@@ -72,6 +72,9 @@ import { CFG_LOAD_LABEL, cfgFallbackMessage, cfgLoadNextStep, loadActionDetail }
 import { withStrictTlsHint } from './strictTlsHint';
 import { writableAttributes } from './cfgAttributes';
 import { dipcCountPrompt, dipcMessageText, dipcSizePrompt, validateDipcCount, validateDipcSize } from './dipcQueue';
+import { activeTasks, quietTask, resolveTask, type TaskQuery, type TaskState, type TaskUi } from './taskResolver';
+import { FileOrigins } from './fileOrigins';
+import { afterLoad } from './ppAfterLoad';
 import type { SignalItem } from './IoTreeProvider';
 import type { Signal } from 'abb-rws-client';
 
@@ -1779,7 +1782,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const elogProvider    = new ElogTreeProvider(m);
   const filesProvider   = new FileExplorerProvider(m);
   const ioProvider      = new IoTreeProvider(m);
-  const watchProvider   = new VariableWatchProvider(multi, context, { confirm, showError });
+  // The task and text hash of each module file pulled or pushed (src/fileOrigins.ts).
+  const origins         = new FileOrigins(context.workspaceState);
+  /** After a load from a file: its task and text, as the controller now has them. */
+  const recordPushed = async (entry: RobotEntry, filePath: string, task: string): Promise<void> => {
+    const text = readText(filePath);
+    if (text !== undefined) { await origins.record(filePath, task, text, entry.id); }
+  };
+  const watchProvider   = new VariableWatchProvider(multi, context, {
+    confirm, showError,
+    taskFor: module => taskForModule(activeEntry(multi), module, 'Add Variable to Watch'),
+  });
   const ctrlSrcProvider = new ControllerSourceProvider(multi);
   const robotsProvider  = new RobotsTreeProvider(multi, id => motionTracker.allowedHere(id));
   const cfgProvider     = new CfgTreeProvider(multi);
@@ -1855,7 +1868,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // functions and data types when hovering over an identifier in any .mod / .sys / .prg file.
     vscode.languages.registerHoverProvider(
       [{ language: 'rapid' }, { scheme: 'file', pattern: '**/*.{mod,sys,prg,MOD,SYS,PRG}' }],
-      new RapidHoverProvider(context.extensionPath, multi),
+      new RapidHoverProvider(context.extensionPath, multi, fsPath => origins.taskOf(fsPath)),
     ),
 
     // RAPID completion (autocomplete + snippets) - same DB. Suggests every
@@ -1895,14 +1908,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     { language: 'rapid' },
     { scheme: 'file', pattern: '**/*.{mod,sys,prg,MOD,SYS,PRG}' },
   ];
-  const inlayHints = new RapidInlayHintsProvider(multi, rapidIndex);
+  const inlayHints = new RapidInlayHintsProvider(multi, rapidIndex, fsPath => origins.taskOf(fsPath));
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(rapidSelector, new RapidDefinitionProvider(rapidIndex)),
     vscode.languages.registerDocumentSymbolProvider(rapidSelector, new RapidDocumentSymbolProvider(rapidIndex)),
     vscode.languages.registerReferenceProvider(rapidSelector, new RapidReferenceProvider(rapidIndex)),
     vscode.languages.registerInlayHintsProvider(rapidSelector, inlayHints),
     inlayHints,
-    new PpDecoration(multi),
+    new PpDecoration(multi, fsPath => origins.taskOf(fsPath)),
   );
 
   // Status bar
@@ -2577,13 +2590,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tracedCommand('abbRobot.showProgramPointer', async () => {
       const entry = activeEntry(multi);
       if (!entry.manager.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
+      const task = await taskFor(entry, 'Show Program Pointer');
+      if (!task) { return; }
       try {
-        const tasks = entry.manager.state.tasks;
-        const task = tasks.find(t => t.active)?.name ?? 'T_ROB1';
         const m = entry.manager;
         const [pp, mp] = await Promise.all([m.getProgramPointer(task), m.getMotionPointer(task)]);
         vscode.window.showInformationMessage(
-          `${task}:\n  PP: ${pp.module ?? '-'} / ${pp.routine ?? '-'} (row ${pp.row ?? '-'})\n  MP: ${mp.module ?? '-'} / ${mp.routine ?? '-'} (row ${mp.row ?? '-'})`,
+          `${task} on ${entry.config.name}:\n  PP: ${pp.module ?? '-'} / ${pp.routine ?? '-'} (row ${pp.row ?? '-'})\n  MP: ${mp.module ?? '-'} / ${mp.routine ?? '-'} (row ${mp.row ?? '-'})`,
           { modal: true },
         );
       } catch (e) { showError('Program pointer', e, entry); }
@@ -2815,7 +2828,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     tracedCommand('abbRobot.readVariable', async () => {
       const entry = activeEntry(multi);
-      const task   = await vscode.window.showInputBox({ title: 'Read Variable (1/3)', prompt: 'Task', value: 'T_ROB1' });
+      const task   = await vscode.window.showInputBox({ title: 'Read Variable (1/3)', ...taskBox(entry) });
       if (!task) { return; }
       const module = await vscode.window.showInputBox({ title: 'Read Variable (2/3)', prompt: 'Module', value: 'user' });
       if (!module) { return; }
@@ -2831,7 +2844,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     tracedCommand('abbRobot.writeVariable', async () => {
       const entry = activeEntry(multi);
-      const task   = await vscode.window.showInputBox({ title: 'Write Variable (1/4)', prompt: 'Task', value: 'T_ROB1' });
+      const task   = await vscode.window.showInputBox({ title: 'Write Variable (1/4)', ...taskBox(entry) });
       if (!task) { return; }
       const module = await vscode.window.showInputBox({ title: 'Write Variable (2/4)', prompt: 'Module', value: 'user' });
       if (!module) { return; }
@@ -2845,7 +2858,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     tracedCommand('abbRobot.readSymbolProperties', async () => {
       const entry = activeEntry(multi);
-      const task   = await vscode.window.showInputBox({ title: 'Symbol Properties (1/3)', prompt: 'Task', value: 'T_ROB1' });
+      const task   = await vscode.window.showInputBox({ title: 'Symbol Properties (1/3)', ...taskBox(entry) });
       if (!task) { return; }
       const module = await vscode.window.showInputBox({ title: 'Symbol Properties (2/3)', prompt: 'Module', value: 'user' });
       if (!module) { return; }
@@ -2860,7 +2873,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     tracedCommand('abbRobot.searchSymbols', async () => {
       const entry = activeEntry(multi);
-      const task = await vscode.window.showInputBox({ title: 'Search Symbols (1/2)', prompt: 'Task', value: 'T_ROB1' });
+      const task = await vscode.window.showInputBox({ title: 'Search Symbols (1/2)', ...taskBox(entry) });
       if (!task) { return; }
       const symtyp = await vscode.window.showQuickPick(
         [{ label: 'All', value: undefined }, { label: 'Variables', value: 'var' }, { label: 'Persistents', value: 'per' }, { label: 'Constants', value: 'con' }, { label: 'Functions', value: 'fun' }, { label: 'Procedures', value: 'prc' }],
@@ -2916,19 +2929,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!uris?.length) { return; }
       const localPath = uris[0].fsPath;
       const fileName  = require('path').basename(localPath);
-      const taskName  = entry.manager.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
-      await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Loading ${fileName}…` }, async () => {
+      const text = readText(localPath);
+      const taskName = await taskForModule(entry, moduleOfFile(localPath, text), 'Load Program from File', origins.taskOf(localPath));
+      if (!taskName) { return; }
+      const where = `${taskName} on ${entry.config.name}`;
+      const loaded = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Loading ${fileName} into ${where}…` }, async () => {
         try {
-          // A failed step (for one, the module loaded but the program pointer
-          // not moved) fails the call; its message says which step and what
-          // was already done.
-          const r = await withStopOffer('Load module', stop => entry.manager.loadProgram(localPath, taskName!, { stopIfRunning: stop }), entry);
-          if (r === CANCELLED) { return; }
-          vscode.window.showInformationMessage(`✓ ${fileName} loaded. Press Start to run.`);
+          // A failed step fails the call; its message says which step and
+          // what was already done. The program pointer is not moved here:
+          // that is its own ask below (src/ppAfterLoad.ts).
+          const r = await withStopOffer('Load module', stop => entry.manager.loadProgram(localPath, taskName, { stopIfRunning: stop, resetPP: false }), entry);
+          return r !== CANCELLED;
         } catch (e: unknown) {
           showError('Load module', e, entry);
+          return false;
         }
       });
+      if (!loaded) { return; }
+      if (text !== undefined) { await origins.record(localPath, taskName, text, entry.id); }
+      offerPPToMain(entry, text ?? '', `✓ ${fileName} loaded into ${where}.`);
     }),
 
     // Invoked by the CodeLens "▶ Set PP here" above each routine in a .mod file.
@@ -2948,25 +2967,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       const active = entry.manager;
-      const taskName = taskForModule(active.state, moduleName);
+      const taskName = await taskForModule(entry, moduleName, 'Set PP', origins.taskOf(lensPath));
+      if (!taskName) { return; }
 
       // If the module isn't loaded on the controller, offer to load THIS file first
       if (!isModuleLoaded(active.state, moduleName)) {
         const filePath = lensPath;
         const choice = await vscode.window.showWarningMessage(
-          `Module "${moduleName}" isn't loaded on ${robotLabel(confirmRobotOf(entry))} yet.`,
+          `Module "${moduleName}" isn't loaded in ${taskName} on ${robotLabel(confirmRobotOf(entry))} yet.`,
           { modal: false },
           'Load this file first', 'Cancel',
         );
         if (choice !== 'Load this file first' || !filePath) { return; }
         try {
-          if (await withStopOffer('Load module', stop => active.loadProgram(filePath, taskName, { stopIfRunning: stop }), entry) === CANCELLED) { return; }
+          // resetPP false: the pointer goes to the routine below, in this task only.
+          if (await withStopOffer('Load module', stop => active.loadProgram(filePath, taskName, { stopIfRunning: stop, resetPP: false }), entry) === CANCELLED) { return; }
+          await recordPushed(entry, filePath, taskName);
         } catch (e) { showError('Load module', e, entry); return; }
       }
 
       try {
         if (await withStopOffer('Set PP', stop => active.setPPToRoutine(taskName, moduleName, routineName, { stopIfRunning: stop }), entry) === CANCELLED) { return; }
-        vscode.window.setStatusBarMessage(`✓ PP set to ${moduleName}.${routineName}`, 3000);
+        vscode.window.setStatusBarMessage(`✓ PP set to ${moduleName}.${routineName} in ${taskName} on ${entry.config.name}`, 3000);
       } catch (e) {
         // Auto-recover from `main` collisions: if Set-PP fails with the
         // Semantic-error code, check if multiple loaded modules have a
@@ -2975,7 +2997,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           // Retry once after the user resolves the collision
           try {
             await active.setPPToRoutine(taskName, moduleName, routineName);
-            vscode.window.setStatusBarMessage(`✓ PP set to ${moduleName}.${routineName}`, 3000);
+            vscode.window.setStatusBarMessage(`✓ PP set to ${moduleName}.${routineName} in ${taskName} on ${entry.config.name}`, 3000);
             return;
           } catch (e2) { showError('Set PP', e2, entry); return; }
         }
@@ -2999,13 +3021,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showWarningMessage('Connect to a robot first, then click ▶ again.');
         return;
       }
-      const taskName = taskForModule(active.state, moduleName);
+      const lensPath = typeof lensFile === 'string' && lensFile ? lensFile : vscode.window.activeTextEditor?.document.fileName;
+      const taskName = await taskForModule(entry, moduleName, 'Run routine', origins.taskOf(lensPath));
+      if (!taskName) { return; }
 
       // One typed confirmation covers everything the click does: the load,
       // the pointer move, the motors and the start. The list says which of
       // them apply on this robot right now.
       const needsLoad = !isModuleLoaded(active.state, moduleName);
-      const filePath = typeof lensFile === 'string' && lensFile ? lensFile : vscode.window.activeTextEditor?.document.fileName;
+      const filePath = lensPath;
       if (needsLoad && !filePath) {
         vscode.window.showWarningMessage(`No active editor with file path. Load ${moduleName} via the Modules panel and retry.`);
         return;
@@ -3031,7 +3055,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // If module isn't loaded, load THIS file
       if (needsLoad && filePath) {
         try {
-          if (await withStopOffer('Load module', stop => active.loadProgram(filePath, taskName, { stopIfRunning: stop }), entry) === CANCELLED) { return; }
+          // resetPP false: the pointer goes to the routine below, in this task only.
+          if (await withStopOffer('Load module', stop => active.loadProgram(filePath, taskName, { stopIfRunning: stop, resetPP: false }), entry) === CANCELLED) { return; }
+          await recordPushed(entry, filePath, taskName);
         } catch (e) { showError('Load module', e, entry); return; }
       }
 
@@ -3055,7 +3081,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
 
         await active.startRapid();
-        vscode.window.setStatusBarMessage(`▶ Running ${moduleName}.${routineName}`, 4000);
+        vscode.window.setStatusBarMessage(`▶ Running ${moduleName}.${routineName} in ${taskName} on ${entry.config.name}`, 4000);
       } catch (e) { showError('Run routine', e, entry); }
     }),
 
@@ -3078,7 +3104,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         moduleName = picked.name;
         taskName = picked.task;
       }
-      if (!taskName) { taskName = taskForModule(active.state, moduleName); }
+      if (!taskName) { taskName = await taskForModule(entry, moduleName, 'Set PP to Routine'); }
+      if (!taskName) { return; }
 
       // Fetch routines from the controller
       let routines: Array<{ name: string; symtyp: string; local: boolean }>;
@@ -3116,7 +3143,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (ppAsk && !await confirm(entry, ppAsk)) { return; }
       try {
         if (await withStopOffer('Set PP to routine', stop => active.setPPToRoutine(taskName!, moduleName!, picked.name, { stopIfRunning: stop }), entry) === CANCELLED) { return; }
-        vscode.window.showInformationMessage(`✓ PP set to ${moduleName}.${picked.name}. Click Start to run.`);
+        vscode.window.showInformationMessage(`✓ PP set to ${moduleName}.${picked.name} in ${taskName} on ${entry.config.name}. Click Start to run.`);
       } catch (e: unknown) { showError('Set PP to routine', e, entry); }
     }),
 
@@ -3137,13 +3164,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         moduleName = picked.name;
         taskName = picked.task;
       }
-      if (!taskName) { taskName = taskForModule(entry.manager.state, moduleName); }
+      if (!taskName) { taskName = await taskForModule(entry, moduleName, 'Unload Module'); }
+      if (!taskName) { return; }
       const unloadAsk = whileRunningRequest('Unload module', isRapidRunning(entry.manager.state.execstate), [`Unloads ${moduleName} from ${taskName}.`]);
       if (unloadAsk && !await confirm(entry, unloadAsk)) { return; }
       try {
         const tn = taskName, mn = moduleName;
         if (await withStopOffer('Unload module', stop => entry.manager.unloadModule(tn, mn, { stopIfRunning: stop }), entry) === CANCELLED) { return; }
-        vscode.window.showInformationMessage(`✓ ${moduleName} unloaded.`);
+        vscode.window.showInformationMessage(`✓ ${moduleName} unloaded from ${taskName} on ${entry.config.name}.`);
       } catch (e: unknown) { showError('Unload module', e, entry); }
     }),
 
@@ -3201,7 +3229,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!entry.manager.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
       const active = entry.manager;
       if (!active) { vscode.window.showWarningMessage('No active robot.'); return; }
-      const taskName = entry.manager.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+      // One task per pull: on a multi-task system the person picks it. Each
+      // file's task and text hash are recorded, so its later Push, Load and
+      // Diff go back to that task.
+      const taskName = await taskFor(entry, 'Pull All Modules');
+      if (!taskName) { return; }
+      const where = `${taskName} on ${entry.config.name}`;
 
       // Pick a destination folder - defaults to the workspace root if any, else asks.
       const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
@@ -3230,18 +3263,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const sysMods = new Set(['BASE', 'user', 'DPUSER', 'DPBASE']);
       let modulesDetailed: Array<{ name: string; type: string }>;
       try { modulesDetailed = await active.listModulesDetailed(taskName); }
-      catch { modulesDetailed = active.state.modules.map(n => ({ name: n, type: '' })); }
+      catch {
+        // The picked task's own list; the flat list only when it is that task's.
+        const listed = active.state.modulesByTask?.[taskName] ?? (quietTask(active.state, {}) === taskName ? active.state.modules : []);
+        modulesDetailed = listed.map(n => ({ name: n, type: '' }));
+      }
       const programMods = modulesDetailed
         .filter(m => !sysMods.has(m.name) && !/SysMod/i.test(m.type))
         .map(m => m.name);
 
       if (programMods.length === 0) {
-        vscode.window.showInformationMessage('No program modules loaded.');
+        vscode.window.showInformationMessage(`No program modules loaded in ${where}.`);
         return;
       }
 
       const overwrite = await vscode.window.showWarningMessage(
-        `Pull ${programMods.length} module(s) into ${destFolder.fsPath}?\n` +
+        `Pull ${programMods.length} module(s) of ${where} into ${destFolder.fsPath}?\n` +
         programMods.map(m => `  • ${m}.mod`).join('\n') + '\n\n' +
         'Existing files with the same name will be OVERWRITTEN.',
         { modal: true }, 'Pull', 'Cancel',
@@ -3251,7 +3288,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const pulled: string[] = [];
       const failed: Array<{ name: string; err: string }> = [];
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `Pulling ${programMods.length} modules…`, cancellable: false },
+        { location: vscode.ProgressLocation.Notification, title: `Pulling ${programMods.length} modules from ${where}…`, cancellable: false },
         async (progress) => {
           for (let i = 0; i < programMods.length; i++) {
             const name = programMods[i];
@@ -3260,6 +3297,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               const source = await active.getModuleSource(taskName, name);
               const filePath = vscode.Uri.joinPath(destFolder!, `${name}.mod`);
               await vscode.workspace.fs.writeFile(filePath, Buffer.from(source, 'utf8'));
+              await origins.record(filePath.fsPath, taskName, source, entry.id);
               pulled.push(name);
             } catch (e) {
               failed.push({ name, err: e instanceof Error ? e.message : String(e) });
@@ -3268,7 +3306,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         },
       );
 
-      const summary = `✓ Pulled ${pulled.length}/${programMods.length} modules into ${destFolder.fsPath}` +
+      const summary = `✓ Pulled ${pulled.length}/${programMods.length} modules of ${where} into ${destFolder.fsPath}` +
         (failed.length ? `\nFailed: ${failed.map(f => `${f.name} (${f.err.slice(0, 60)})`).join(', ')}` : '');
       const action = await vscode.window.showInformationMessage(summary, 'Open Folder', 'OK');
       if (action === 'Open Folder') {
@@ -3299,19 +3337,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showWarningMessage(`Cannot push ${path.basename(filePath)} - only .mod / .sys / .prg files.`);
         return;
       }
-      const taskName = entry.manager.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
       // Strip legacy `.controller` / `.from-controller` suffix from the file
       // basename so the displayed module name in the progress / status
       // matches what RAPID will actually call it.
       const moduleName = path.basename(filePath, path.extname(filePath)).replace(/\.(controller|from-controller)$/i, '');
+      const text = readText(filePath);
+      const taskName = await taskForModule(entry, moduleOfFile(filePath, text), 'Push Current File', origins.taskOf(filePath));
+      if (!taskName) { return; }
+      const where = `${taskName} on ${entry.config.name}`;
 
       try {
+        // resetPP false: the program pointer moves only through its own ask
+        // after the push (src/ppAfterLoad.ts).
         const r = await vscode.window.withProgress(
-          { location: vscode.ProgressLocation.Notification, title: `Pushing ${moduleName}${path.extname(filePath)} to ${taskName}…`, cancellable: false },
-          () => withStopOffer('Push current file', stop => active.loadProgram(filePath!, taskName, { stopIfRunning: stop }), entry),
+          { location: vscode.ProgressLocation.Notification, title: `Pushing ${moduleName}${path.extname(filePath)} to ${where}…`, cancellable: false },
+          () => withStopOffer('Push current file', stop => active.loadProgram(filePath!, taskName, { stopIfRunning: stop, resetPP: false }), entry),
         );
         if (r === CANCELLED) { return; }
-        vscode.window.showInformationMessage(`✓ Pushed ${moduleName}${path.extname(filePath)} to ${taskName}.`);
+        if (text !== undefined) { await origins.record(filePath, taskName, text, entry.id); }
+        offerPPToMain(entry, text ?? '', `✓ Pushed ${moduleName}${path.extname(filePath)} to ${where}.`);
       } catch (e: unknown) { showError('Push current file', e, entry); }
     }),
 
@@ -3339,12 +3383,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showWarningMessage(`Cannot diff ${path.basename(filePath)} - only .mod / .sys / .prg files.`);
         return;
       }
-      const taskName = entry.manager.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
       const ext = path.extname(filePath);
       // Strip any legacy `.controller` / `.from-controller` suffix the user
       // might still have on disk from earlier-version files. Real RAPID
       // module names can't contain dots - the controller 400s on them.
       const moduleName = path.basename(filePath, ext).replace(/\.(controller|from-controller)$/i, '');
+      const taskName = await taskForModule(entry, moduleOfFile(filePath, readText(filePath)), 'Diff Current File with Controller', origins.taskOf(filePath));
+      if (!taskName) { return; }
       try {
         // Use the abb-controller: scheme so VS Code shows it as a virtual,
         // read-only doc - and so re-running Diff on this tab is a no-op
@@ -3356,7 +3401,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await vscode.commands.executeCommand('vscode.diff',
           remoteUri,
           localUri,
-          `${moduleName}${ext}  (controller ↔ local)`,
+          `${moduleName}${ext}  (${taskName} on ${entry.config.name} ↔ local)`,
         );
       } catch (e: unknown) { showError('Diff with controller', e, entry); }
     }),
@@ -3377,10 +3422,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         moduleName = picked.name;
         taskName = picked.task;
       }
-      if (!taskName) { taskName = taskForModule(entry.manager.state, moduleName); }
+      if (!taskName) { taskName = await taskForModule(entry, moduleName, 'Open Loaded Module Source'); }
+      if (!taskName) { return; }
       try {
         const source = await entry.manager.getModuleSource(taskName, moduleName);
-        await openAsScratchFile(`${moduleName}.mod`, source);
+        const written = await openAsScratchFile(`${moduleName}.mod`, source);
+        if (written) { await origins.record(written, taskName, source, entry.id); }
       } catch (e: unknown) {
         // Reading a module's text is a write on the controller: it writes the
         // module to a file on the controller and deletes it afterwards, so
@@ -3407,11 +3454,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         moduleName = picked.name;
         taskName = picked.task;
       }
-      if (!taskName) { taskName = taskForModule(entry.manager.state, moduleName); }
+      if (!taskName) { taskName = await taskForModule(entry, moduleName, 'View Module Text'); }
+      if (!taskName) { return; }
       try {
         const { text, changeCount } = await entry.manager.getModuleText(taskName, moduleName);
-        await openAsScratchFile(`${moduleName}.mod`, text);
-        vscode.window.setStatusBarMessage(`${moduleName}: controller change count ${changeCount}`, 8000);
+        const written = await openAsScratchFile(`${moduleName}.mod`, text);
+        if (written) { await origins.record(written, taskName, text, entry.id); }
+        vscode.window.setStatusBarMessage(`${moduleName} in ${taskName} on ${entry.config.name}: controller change count ${changeCount}`, 8000);
       // 'View RAPID text', not 'View module text': the isWriteOp heuristic in
       // friendlyErrorMessage keys on 'module' and would give write-op advice
       // (motors on, AUTO mode) for what is a pure read.
@@ -3423,7 +3472,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const entry = activeEntry(multi);
       if (!entry.manager.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
       const active = entry.manager;
-      const taskName = entry.manager.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+      const taskName = await taskFor(entry, 'Call Service Routine');
+      if (!taskName) { return; }
       try {
         // RWS has no operation that calls a service routine (the resource is a
         // GET listing; the client's callServiceRoutine throws before sending).
@@ -3434,11 +3484,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         // mode, except that the client holds the move back on RobotWare 8 in
         // Auto.
         await callServiceRoutine(active, taskName, {
-          pick: items => vscode.window.showQuickPick(items, { title: 'Service routine', placeHolder: 'Set the program pointer to…' }),
+          pick: items => vscode.window.showQuickPick(items, { title: `Service routine in ${taskName} on ${entry.config.name}`, placeHolder: `Set the program pointer of ${taskName} to…` }),
           info: m => { vscode.window.showInformationMessage(m); },
           warn: m => { vscode.window.showWarningMessage(m); },
           movePointer: async run => {
-            const ask = whileRunningRequest('Set PP to service routine', isRapidRunning(entry.manager.state.execstate), ['Moves the program pointer to a service routine.']);
+            const ask = whileRunningRequest('Set PP to service routine', isRapidRunning(entry.manager.state.execstate), [`Moves the program pointer of ${taskName} to a service routine.`]);
             if (ask && !await confirm(entry, ask)) { return false; }
             return await withStopOffer('Set PP to service routine', run, entry) !== CANCELLED;
           },
@@ -3855,7 +3905,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tracedCommand('abbRobot.validateRapidValue', async () => {
       const entry = activeEntry(multi);
       if (!entry.manager.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
-      const taskName = entry.manager.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+      const taskName = await taskFor(entry, 'Validate RAPID Value');
+      if (!taskName) { return; }
       const datatype = await vscode.window.showInputBox({ prompt: 'RAPID datatype', placeHolder: 'num | string | bool | robtarget | …' });
       if (!datatype) { return; }
       const value = await vscode.window.showInputBox({ prompt: `Value to validate as ${datatype}`, placeHolder: '123 | "hello" | TRUE | [[1,2,3],…]' });
@@ -3884,9 +3935,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const text = editor.document.getText();
       const m = /\bMODULE\s+(\w+)/i.exec(text);
       const moduleName = m ? m[1] : path.basename(editor.document.fileName, path.extname(editor.document.fileName));
-      const taskName = entry.manager.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+      const taskName = await taskForModule(entry, moduleName, 'Add Selection to Variable Watch', origins.taskOf(editor.document.fileName));
+      if (!taskName) { return; }
       await watchProvider.addWatchFromSelection(taskName, moduleName, symbol);
-      vscode.window.setStatusBarMessage(`✓ Watching ${moduleName}.${symbol}`, 3000);
+      vscode.window.setStatusBarMessage(`✓ Watching ${moduleName}.${symbol} in ${taskName} on ${entry.config.name}`, 3000);
     }),
     tracedCommand('abbRobot.removeWatch', (arg: unknown) => watchProvider.removeWatch(arg)),
     tracedCommand('abbRobot.writeWatchValue', (arg: unknown) => watchProvider.writeValue(arg)),
@@ -4042,7 +4094,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         taskName = picked.task;
       }
       const name = moduleName;
-      const task = taskName ?? taskForModule(entry.manager.state, name);
+      const task = taskName ?? await taskForModule(entry, name, 'Download Module to File');
+      if (!task) { return; }
       const fileName = moduleSaveName(name);
       const saveUri = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.file(path.join(require('os').homedir(), fileName)), filters: { 'RAPID Module': ['mod'] } });
       if (!saveUri) { return; }
@@ -4050,8 +4103,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         try {
           // The loaded module's text, read as View Module Text reads it - not a
           // file in $HOME (a system module such as BASE has none there).
-          await saveModuleText(entry.manager, task, name, text => fs.writeFileSync(saveUri.fsPath, text, 'utf8'));
-          const open = await vscode.window.showInformationMessage(`✓ ${fileName} saved.`, 'Open');
+          let saved: string | undefined;
+          await saveModuleText(entry.manager, task, name, text => { fs.writeFileSync(saveUri.fsPath, text, 'utf8'); saved = text; });
+          if (saved !== undefined) { await origins.record(saveUri.fsPath, task, saved, entry.id); }
+          const open = await vscode.window.showInformationMessage(`✓ ${fileName} saved from ${task} on ${entry.config.name}.`, 'Open');
           if (open === 'Open') { vscode.window.showTextDocument(saveUri); }
         } catch (e: unknown) { showError(MODULE_SAVE_LABEL, e, entry); }
       });
@@ -4503,34 +4558,88 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** The slice of RobotState the module/task helpers below need. */
-type ModuleState = {
-  modules: string[];
-  tasks: Array<{ name: string; active: boolean }>;
-  modulesByTask?: Record<string, string[]>;
+type ModuleState = TaskState;
+
+/** The task pick the resolver talks through. */
+const taskUi: TaskUi = {
+  pick: (items, title, placeHolder) => vscode.window.showQuickPick(items, { title, placeHolder }).then(p => p?.task),
+  warn: m => { vscode.window.showWarningMessage(m); },
 };
 
 /**
- * MultiMove controllers run several active tasks, each with its own module
- * set (state.modulesByTask). Resolve which task a module belongs to: an
- * explicit task wins, then the first task that lists the module, then the
- * primary active task (which is the whole story on single-task systems).
+ * The task a command on this robot acts on, by the one rule in
+ * src/taskResolver.ts: the person picks when the rule cannot tell, and no
+ * task is taken for being first in the list. Undefined: send nothing (the
+ * pick was dismissed, or the robot has no task to act on, said in a warning).
  */
-function taskForModule(state: ModuleState, moduleName: string, explicit?: unknown): string {
-  if (typeof explicit === 'string' && explicit) { return explicit; }
-  for (const [task, mods] of Object.entries(state.modulesByTask ?? {})) {
-    if (mods.includes(moduleName)) { return task; }
-  }
-  return state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+function taskFor(entry: RobotEntry, purpose: string, q: TaskQuery = {}): Promise<string | undefined> {
+  return resolveTask(taskUi, robotLabel(confirmRobotOf(entry)), entry.manager.state, q, purpose);
 }
 
-/** Every loaded module across all active tasks, tagged with its task. */
-function loadedModules(state: ModuleState): Array<{ task: string; name: string }> {
+/**
+ * MultiMove controllers run several active tasks, each with its own module
+ * set (state.modulesByTask). The task a module belongs to: the file's
+ * recorded task, then the one task that lists the module, then the one
+ * active task (the whole story on single-task systems); otherwise the person
+ * picks.
+ */
+function taskForModule(entry: RobotEntry, moduleName: string, purpose: string, recorded?: string): Promise<string | undefined> {
+  return taskFor(entry, purpose, { module: moduleName, recorded });
+}
+
+/**
+ * Every loaded module across all active tasks, tagged with its task. Without
+ * the per-task lists, the flat list is the one active task's; with several
+ * active, it names no task and the module's task is asked for when used.
+ */
+function loadedModules(state: ModuleState): Array<{ task: string | undefined; name: string }> {
   const byTask = state.modulesByTask ?? {};
   if (Object.keys(byTask).length === 0) {
-    const task = state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+    const task = quietTask(state, {});
     return state.modules.map(name => ({ task, name }));
   }
   return Object.entries(byTask).flatMap(([task, mods]) => mods.map(name => ({ task, name })));
+}
+
+/**
+ * The Task box of the typed variable commands: filled only when one task is
+ * active; with several, empty and listing them, so a typed task is the
+ * person's own.
+ */
+function taskBox(entry: RobotEntry): { prompt: string; value: string; placeHolder: string } {
+  const tasks = activeTasks(entry.manager.state);
+  return { prompt: `Task on ${entry.config.name}`, value: quietTask(entry.manager.state, {}) ?? '', placeHolder: tasks.join(', ') };
+}
+
+/**
+ * After a successful Push or Load: the success message, and for a file with
+ * PROC main an offer to move the program pointer to main, behind its own
+ * confirmation naming the robot and the tasks it moves (src/ppAfterLoad.ts).
+ * Not awaited: the offer stays until the person answers it.
+ */
+function offerPPToMain(entry: RobotEntry, text: string, success: string): void {
+  void afterLoad({
+    info: m => { vscode.window.showInformationMessage(m); },
+    offer: (m, button) => vscode.window.showInformationMessage(m, button).then(c => c === button),
+    confirm: request => confirm(entry, request),
+    resetRapid: async () => {
+      try {
+        await entry.manager.resetRapid();
+        vscode.window.showInformationMessage(`✓ PP moved to main on ${entry.config.name}.`);
+      } catch (e: unknown) { showError('PP to Main', e, entry); }
+    },
+  }, text, success, activeTasks(entry.manager.state));
+}
+
+/** The module a RAPID file declares (`MODULE name`), else its file name without the extension. */
+function moduleOfFile(filePath: string, text?: string): string {
+  const declared = text !== undefined ? /\bMODULE\s+(\w+)/i.exec(text)?.[1] : undefined;
+  return declared ?? path.basename(filePath, path.extname(filePath)).replace(/\.(controller|from-controller)$/i, '');
+}
+
+/** A file's text, or undefined when it cannot be read (the client then refuses it before sending). */
+function readText(filePath: string): string | undefined {
+  try { return fs.readFileSync(filePath, 'utf8'); } catch { return undefined; }
 }
 
 function isModuleLoaded(state: ModuleState, moduleName: string): boolean {
@@ -4544,7 +4653,7 @@ const SYSTEM_MODULES = new Set(['BASE', 'user', 'DPUSER', 'DPBASE']);
  * undefined when the user cancelled. Shows the owning task when more than
  * one task has modules (MultiMove), since the same name can live in both.
  */
-async function pickLoadedModule(state: ModuleState, placeHolder: string, includeSystem = false): Promise<{ task: string; name: string } | null | undefined> {
+async function pickLoadedModule(state: ModuleState, placeHolder: string, includeSystem = false): Promise<{ task: string | undefined; name: string } | null | undefined> {
   const all = loadedModules(state).filter(m => includeSystem || !SYSTEM_MODULES.has(m.name));
   if (all.length === 0) { return null; }
   const multiTask = new Set(all.map(m => m.task)).size > 1;
@@ -4880,12 +4989,17 @@ async function requestRmmpInteractive(entry: RobotEntry, opts: { level: RmmpLeve
  * to `.controller.mod` because that creates an invalid RAPID module name
  * and breaks downstream Push/Diff (controller rejects module name with
  * a dot in it).
+ *
+ * Returns the path when the controller's text was written there (so the
+ * caller can record where it came from), undefined when the local copy was
+ * kept or the person cancelled.
  */
-async function openAsScratchFile(name: string, content: string): Promise<void> {
+async function openAsScratchFile(name: string, content: string): Promise<string | undefined> {
   const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const scratchDir = wsRoot ?? path.join(require('os').homedir(), '.abb-rws-extension', 'scratch');
   fs.mkdirSync(scratchDir, { recursive: true });
   const destPath = path.join(scratchDir, name);
+  let written = false;
 
   if (fs.existsSync(destPath)) {
     const choice = await vscode.window.showInformationMessage(
@@ -4895,16 +5009,19 @@ async function openAsScratchFile(name: string, content: string): Promise<void> {
       'Overwrite with Controller Version',
       'Cancel',
     );
-    if (!choice || choice === 'Cancel') { return; }
+    if (!choice || choice === 'Cancel') { return undefined; }
     if (choice === 'Overwrite with Controller Version') {
       fs.writeFileSync(destPath, content, 'utf8');
+      written = true;
     }
     // Either way (open local or overwrite-and-open), open the destPath.
   } else {
     fs.writeFileSync(destPath, content, 'utf8');
+    written = true;
   }
   const doc = await vscode.workspace.openTextDocument(destPath);
   await vscode.window.showTextDocument(doc, { preview: false });
+  return written ? destPath : undefined;
 }
 
 /**

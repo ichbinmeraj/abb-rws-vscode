@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { MultiRobotManager } from 'abb-rws-client';
 import type { RapidLanguageIndex } from './RapidLanguageIndex';
+import { quietTask } from './taskResolver';
 
 /**
  * Inlay hints that show LIVE controller values next to RAPID variable
@@ -40,6 +41,8 @@ export class RapidInlayHintsProvider implements vscode.InlayHintsProvider, vscod
   constructor(
     private readonly multi: MultiRobotManager,
     private readonly index: RapidLanguageIndex,
+    /** The task a file was pulled from (src/fileOrigins.ts), if recorded. */
+    private readonly recordedTask: (fsPath: string) => string | undefined = () => undefined,
   ) {
     // Tick the change event periodically while connected so VS Code re-asks
     // for hints and the visible values appear "alive."
@@ -72,11 +75,15 @@ export class RapidInlayHintsProvider implements vscode.InlayHintsProvider, vscod
     );
     if (visible.length === 0) { return []; }
 
-    const taskName = this.multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+    // Each module's task by the rule; no hint where it cannot settle one (a
+    // value from another task's variable of the same name would mislead).
+    const recorded = this.recordedTask(document.uri.fsPath);
     const hints: vscode.InlayHint[] = [];
 
     for (const sym of visible) {
       if (token.isCancellationRequested) { break; }
+      const taskName = quietTask(this.multi.state, { module: sym.containerModule, recorded });
+      if (!taskName) { continue; }
       const live = await this.lookupLive(taskName, sym.containerModule, sym.name);
       if (!live || live.error) { continue; }
       if (live.value === undefined) { continue; }

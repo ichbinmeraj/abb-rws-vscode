@@ -390,7 +390,7 @@ Both write scripts use `samples/TestExtension.mod`.
 | 1 | **`ModulesTreeProvider` is dead code** - constructed and refreshed but registered in no view (the Program panel is now `TabbedProgramWebviewProvider`) | `extension.ts:376, 505` vs `:385-431` |
 | 2 | **Dependency version skew**: manifest pins `abb-rws-client-0.5.0.tgz`, `node_modules` has 0.7.1, source is 0.7.2, and `docs/RWS_COVERAGE.md`/`RWS1_PARITY_PLAN.md` attribute the shipped parity to 0.6.0 | `package.json:1164` vs installed vs `docs/*` |
 | 3 | `abbRobot.resetRapid` and `abbRobot.ppToMain` are two commands with identical title "PP to Main" and icon | `package.json:243-253` |
-| 4 | Category `Debuggers` declared but no debugger contribution exists (DebugAdapter is future work) | `package.json:38-42`, `docs/RWS_COVERAGE.md:236` |
+| 4 | Category `Debuggers` declared but no debugger contribution exists (DebugAdapter is future work). Fixed in 1.4.1: the category is gone | `package.json:38-42`, `docs/RWS_COVERAGE.md:236` |
 | 5 | Walkthrough "watch" step completes on `abbRobot.addWatch` but instructs the user to use `abbRobot.addSelectionToWatch` | `package.json:859-864` |
 | 6 | README comparison table claims "IK + FK ✓" unqualified, but IK always fails on VCs and FK's param format is listed as a blocker | `README.md:54`, `docs/RWS_COVERAGE.md:92` |
 | 7 | `setActiveTool`/`setActiveWobj` hardcode mechunit `ROB_1`, while `showMechunitDetails` correctly uses `state.mechunits[0] ?? 'ROB_1'` | `extension.ts:1773,1781,990` |

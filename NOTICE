@@ -13,9 +13,10 @@ Releases up to and including 1.2.0 were published under the MIT License.
 Those releases remain available under MIT; this and later releases are
 Apache-2.0.
 
-ABB, IRC5, OmniCore, RobotWare, RobotStudio, RAPID and FlexPendant are
-trademarks of ABB Ltd. This project is not affiliated with, endorsed by, or
-supported by ABB Ltd. See TRADEMARKS.md.
+ABB is a trademark of ABB Asea Brown Boveri Ltd. IRC5, OmniCore, RobotWare,
+RobotStudio, RAPID and FlexPendant are trademarks of their respective owners.
+This project is not affiliated with, endorsed by, sponsored by or supported by
+ABB, ABB Robotics or any later owner of these products. See TRADEMARKS.md.
 
 --------------------------------------------------------------------------
 Third-party components redistributed in this extension

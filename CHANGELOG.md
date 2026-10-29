@@ -2,6 +2,71 @@
 
 ## Unreleased
 
+## 1.4.1 - 2026-10-30 - Every task command goes to the task you meant
+
+### Fixed
+
+- **Multi-task systems (MultiMove).** Push Current File to Controller, Load
+  Program from File, Diff Current File with Controller, Call Service Routine,
+  Show Program Pointer, Pull All Modules, Validate RAPID Value and Add
+  Selection to Variable Watch used the first active task, whatever task the
+  module belonged to, so a module of T_ROB2 could go to T_ROB1 with no
+  warning. They now take their task by one rule: the task the file was pulled
+  from, else the one task that has the module loaded, else the one active
+  task. Otherwise RAPID Live asks which task, in a list that names the robot,
+  and a dismissed list sends nothing. A file pulled from a task the connected
+  robot does not have always asks. Set PP to Routine, Unload Module, Open
+  Loaded Module Source, View Module Text, Download Module to File, and Set PP
+  and Run this routine from the editor follow the same rule where they took
+  the first task that listed the module. No command uses T_ROB1 as a default
+  any more. The Task box of Read Variable, Write Variable, Symbol Properties
+  and Search Symbols is filled in only when one task is active.
+- **The program pointer after Push and Load.** Push Current File and Load
+  Program from File moved the program pointer to main for the whole
+  execution whenever the file had `PROC main`, which on a multi-task system is
+  every task it runs. They now leave it where it is. For a file with
+  `PROC main` their message offers **PP to Main…**, which asks first and names
+  the tasks it moves. Set PP and Run this routine from the editor load with
+  the pointer untouched and then set it in their own task, as before.
+- Hover live values, inlay hints and the program pointer marker read the
+  file's own task. Where the rule cannot settle one they show nothing, not
+  another task's value. The Live Cell view lists every active task.
+
+### Changed
+
+- Pull All Modules, Open Loaded Module Source, View Module Text, Download
+  Module to File and a successful Push or Load record the task and a hash of
+  the text for each file path. The folder layout is the same.
+- The messages of Push, Load, Pull All, Set PP, Unload, Show Program Pointer
+  and the watch name the robot and the task. The confirmation of Edit
+  Watched Value names the task.
+- Listing: the Debuggers category is gone (RAPID Live has no debugger), and
+  so is the step debugging line under Coming soon. README: the comparison
+  table against ABB's extension 0.1.0 is replaced by prose about ABB 0.3.0
+  (checked 2026-10-28), the Git workflow box by two sentences, and the PC
+  SDK sentence is corrected. New: a No telemetry line, and a Before you
+  connect to a real cell section in place of Safety notes, whose link opened
+  ABB's IRC5 troubleshooting manual. The trademark lines name ABB Asea Brown
+  Boveri Ltd and any later owner of these products.
+- Running next to ABB's RAPID & Ecosystem Tools, measured again with ABB 0.3.0
+  (README and docs/coexistence.md): everything measured with 0.1.0 holds. New
+  in 0.3.0, ABB's fixed colours apply to flow keywords, strings and numbers in
+  RAPID files when both are installed. Also measured next to ABB RAPID Pack
+  2.0.0, whose defaults turn format on save on for RAPID files. Push Current
+  File saves an edited file before it sends it.
+
+Checked on RW 8.2.1 virtual controllers. With one task, a new module was
+pushed and then pushed again with a change, each read back with the module
+text. The rule took T_ROB1 with no pick, and no PP to Main went out. With two
+tasks (T_ROB1 and a second normal task, with the Multitasking option), Load
+Program from File asked which task, Pull All Modules recorded the second task,
+and Push and Diff went back to it with no pick. Every file was read back, and
+T_ROB1's program pointer stayed on its routine through each of these. A module
+of the same name in both tasks made the rule ask, offering the two. PP to Main,
+as its own ask, moved both tasks to main. Not checked on a controller: the
+pointer move of Call Service Routine in a second task, which the client holds
+back on RobotWare 8 in Auto, and an IRC5 MultiMove system.
+
 ## 1.4.0 - 2026-10-25 - Add Robot through findControllers, motion control on RobotWare 8, abb-rws-client 1.5.1
 
 1.3.0 was prepared but not published; its changes ship in this release,

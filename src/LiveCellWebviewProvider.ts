@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { MultiRobotManager } from 'abb-rws-client';
+import { activeTasks } from './taskResolver';
 
 /**
  * "Live Cell" panel - a compact webview-based dashboard summarizing the
@@ -79,7 +80,8 @@ export class LiveCellWebviewProvider implements vscode.WebviewViewProvider {
       speed: s.speedRatio ?? undefined,
       joints: s.joints ?? undefined,
       cartesian: s.cartesian ?? undefined,
-      activeTask: s.tasks.find(t => t.active)?.name,
+      // Every active task, not the first one: on MultiMove several run.
+      activeTask: activeTasks(s).join(', ') || undefined,
       taskCount: s.tasks.length,
       loadedModules: s.modules,
       rwVersion: s.systemInfo?.rwVersion,

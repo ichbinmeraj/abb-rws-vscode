@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { MultiRobotManager, RobotManager } from 'abb-rws-client';
+import { quietTask } from './taskResolver';
 
 /**
  * The Program panel - tabbed webview with two tabs: Modules and Watch.
@@ -148,11 +149,13 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
     if (!active) { return; }
     const sysmods = new Set(['BASE', 'user', 'DPUSER', 'DPBASE']);
     // Every active task's modules (MultiMove has several), falling back to
-    // the flat primary list when the per-task map is not populated.
+    // the flat primary list when the per-task map is not populated and one
+    // task is active (with several, the flat list names no task).
     const byTask = Object.entries(this.multi.state.modulesByTask ?? {});
+    const only = quietTask(this.multi.state, {});
     const perTask: Array<[string, string[]]> = byTask.length
       ? byTask
-      : [[this.multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1', this.multi.state.modules]];
+      : only ? [[only, this.multi.state.modules]] : [];
     for (const [taskName, mods] of perTask) {
       for (const mod of mods.filter(m => !sysmods.has(m))) {
         const key = `${taskName}:${mod}`;

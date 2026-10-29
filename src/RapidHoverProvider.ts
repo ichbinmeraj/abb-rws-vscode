@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { MultiRobotManager } from 'abb-rws-client';
 import { Logger } from './Logger';
+import { quietTask } from './taskResolver';
 
 /**
  * Hover provider for RAPID source files (.mod / .sys / .prg).
@@ -77,6 +78,8 @@ export class RapidHoverProvider implements vscode.HoverProvider {
   constructor(
     private readonly extensionRoot: string,
     private readonly multi?: MultiRobotManager,
+    /** The task a file was pulled from (src/fileOrigins.ts), if recorded. */
+    private readonly recordedTask: (fsPath: string) => string | undefined = () => undefined,
   ) {}
 
   async provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): Promise<vscode.Hover | null> {
@@ -97,7 +100,10 @@ export class RapidHoverProvider implements vscode.HoverProvider {
 
     const moduleName = this.detectModuleName(document);
     if (!moduleName) { return null; }
-    const taskName = this.multi.state.tasks.find(t => t.active)?.name ?? 'T_ROB1';
+    // No live value when the rule cannot settle the file's task: a value read
+    // from another task's variable of the same name would mislead.
+    const taskName = quietTask(this.multi.state, { module: moduleName, recorded: this.recordedTask(document.fileName) });
+    if (!taskName) { return null; }
 
     const live = await this.lookupLiveValue(taskName, moduleName, word);
     if (token.isCancellationRequested) { return null; }

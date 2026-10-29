@@ -5,6 +5,46 @@ Measured 2026-10-10 on Windows 11 with VS Code 1.140.0, RAPID Live 1.3.0
 published, and its changes ship in 1.4.0) and ABB Robotics - RAPID &
 Ecosystem Tools 0.1.0 (`abb-robotics-ecosystem.abb-robotics`, from the marketplace).
 
+## Measured again with ABB 0.3.0 (2026-10-29)
+
+Re-run the same way on Windows 11 with VS Code 1.143.1, the published RAPID Live 1.4.0
+and ABB's 0.3.0 from the marketplace, in both install orders. Every result below held:
+the language, RAPID Live's grammar, ABB's formatter as the one formatter (5 edits on
+`messy.mod`), two hover sections, the doubled outline, both extensions active, all of
+RAPID Live's commands present (139 `abbRobot.*`), and no warning about grammars or
+languages in the logs.
+
+One thing is new in 0.3.0. ABB's extension now ships fixed token colours for dark and
+light themes, keyed on its own scope names. Three of those names are names RAPID Live's
+grammar also gives: `keyword.control.rapid` (flow keywords such as `IF`, `THEN` and
+`ENDIF`), `string.quoted.double.rapid` and `constant.numeric.rapid`. With both
+installed, those tokens show in ABB's colours in every built-in theme, high contrast
+included, while `PROC`, `MODULE`, comments and instructions keep the theme's colours.
+ABB's other colour rules never apply, because RAPID Live's grammar is the one that
+colours the file. Neither extension has a setting for it. ABB 0.3.0 contributes the same
+languages, grammars, commands, settings and providers as 0.1.0, so the colours are the
+one change that touches running the two together.
+
+## Next to ABB RAPID Pack 2.0.0 (2026-10-29)
+
+The same probe ran with ABB RAPID Pack 2.0.0 (`Maxzurek.abb-rapid-pack`, a community
+extension) and RAPID Live 1.4.0, in both install orders, and once with all three (ABB
+0.3.0, RAPID Pack, RAPID Live). All four files open as `rapid`, all the extensions
+activate, and RAPID Live's grammar still colours the file. Hover, completion, the
+outline and Go to Definition show entries from each extension, and every command of
+each is present.
+
+RAPID Pack's defaults name it the formatter for RAPID files and turn format on save on
+for them, while its own formatter is off until you enable it
+(`abb-rapid-pack.enableRapidFormatter`). With RAPID Pack and RAPID Live alone, Format
+Document changed nothing. With ABB's extension installed as well, Format Document ran
+ABB's formatter and changed the keyword case (5 edits on `messy.mod`), so with format on
+save a save may do the same. What a save shows on screen in that setup was not looked
+at. RAPID Live's Push Current File saves an edited file before it sends it, so check
+your format-on-save setting for `[rapid]` if more than one RAPID extension is
+installed. RAPID Pack's controller side (its deploy, debugger and task selection) was
+not part of this check.
+
 ## How it was measured
 
 Both extensions were installed into an empty VS Code (fresh `--user-data-dir` and
