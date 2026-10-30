@@ -279,6 +279,25 @@ export function identityVerdict(last: LastSeen | undefined, reading: SystemReadi
   return systemIdKey(reading.sysid) === systemIdKey(last.systemId) ? 'same' : 'different';
 }
 
+/**
+ * The question before a port found by scanning this PC is saved, when the
+ * controller gave no system id to confirm it is the robot last seen. Saying
+ * no keeps the saved address; the session stays on the port it connected to.
+ */
+export function unverifiedPortQuestion(name: string, port: number, last: LastSeen): { message: string; detail: string; button: string } {
+  const seen = last.systemName ? `${last.systemName} (system id ${last.systemId})` : `system ${last.systemId}`;
+  return {
+    message: `Save port ${port} for "${name}"?`,
+    detail: `"${name}" answers on port ${port}, which RAPID Live found by scanning this PC. The controller did not say its system id, so RAPID Live cannot confirm it is the one last seen (${seen}). Writes to it are held back until the controller confirms it. Nothing is sent by this choice.`,
+    button: `Save port ${port}`,
+  };
+}
+
+/** The refusal of a write while a scanned port's controller has not confirmed its system id (the wrappers' mode seam). */
+export function unverifiedWriteRefusal(label: string, robotLabel: string): string {
+  return `${label} not sent: ${robotLabel} answered on a port RAPID Live found by scanning, and the controller has not confirmed its system id yet. Connect again once it has, or check the robot's address.`;
+}
+
 /** A port and HTTPS flag, as a robot's entry holds them. */
 export interface PortOf { port?: number; useHttps?: boolean }
 

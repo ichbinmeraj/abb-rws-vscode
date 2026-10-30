@@ -1,0 +1,120 @@
+name: Release
+
+# Publishes a tagged release to the Visual Studio Marketplace through Trusted Publishing
+# (OpenID Connect): no Personal Access Token is stored anywhere. The Marketplace side is a
+# Trusted Publishing policy on the merajsafari publisher naming this repository, this file
+# (release.yml) and the environment "marketplace". The policy has no branch or tag field,
+# so the environment carries the gate: Meraj as required reviewer, and deployments only
+# from tags v*.
+#
+# Two jobs. "package" builds the .vsix from the tagged commit, the way CI builds it, and
+# uploads it with its sha256. "publish" waits for the approval in the environment, then
+# publishes that uploaded file (not a new build) after checking its sha256 again. Before
+# approving, the owner runs his own checks on the uploaded .vsix.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# One release at a time; a second tag waits instead of racing the first.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # The same client release and integrity as ci.yml. The guard step below fails the run
+  # when the two files disagree, since test/hostVerdicts.test.ts checks ci.yml only.
+  CLIENT_REF: v1.5.3
+  CLIENT_INTEGRITY: sha512-3xBcoQVVJJQOIBeDRn73wu1RYXWS0QmVPligLzafWCTII9OVJ5AegF67gf2ckOI7zZrQQIM2A2RhqtV1WlGAyw==
+  # vsce that packs (the version the manual releases used) and vsce that publishes
+  # (--oidc arrived in 4.1.0). Exact versions, never a range.
+  VSCE_PACK: '@vscode/vsce@4.0.0'
+  VSCE_PUBLISH: '@vscode/vsce@4.1.0'
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    outputs:
+      vsix: ${{ steps.pack.outputs.vsix }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      # Nothing is built from a tag that is not on master, whose version is not the one
+      # package.json carries, or whose client constants differ from ci.yml's.
+      - name: Guard the tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="$(node -p "require('./package.json').version")"
+          [ "$tag" = "v$version" ] || { echo "tag $tag is not v$version from package.json"; exit 1; }
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/master || { echo "$tag ($GITHUB_SHA) is not on master"; exit 1; }
+          grep -q "CLIENT_REF: $CLIENT_REF\$" .github/workflows/ci.yml || { echo "CLIENT_REF differs from ci.yml"; exit 1; }
+          grep -qF "CLIENT_INTEGRITY: $CLIENT_INTEGRITY" .github/workflows/ci.yml || { echo "CLIENT_INTEGRITY differs from ci.yml"; exit 1; }
+      - run: git clone https://github.com/ichbinmeraj/abb-rws-client.git ../abb-rws-client
+      - run: git -C ../abb-rws-client checkout --detach "$CLIENT_REF"
+      - run: npm run vendor
+      - run: npm ci
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
+      - name: Package
+        id: pack
+        run: |
+          npx --yes "$VSCE_PACK" package
+          vsix="abb-rws-${GITHUB_REF_NAME#v}.vsix"
+          [ -f "$vsix" ] || { echo "no $vsix"; exit 1; }
+          sha="$(sha256sum "$vsix" | cut -d' ' -f1)"
+          # In the log as well: publish-family.ps1 -CiRun reads this line and compares it with
+          # the artifact it downloads.
+          echo "vsix sha256 $sha $vsix"
+          echo "vsix=$vsix" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "### $vsix"
+            echo "- commit: $GITHUB_SHA"
+            echo "- size: $(stat -c %s "$vsix") bytes"
+            echo "- sha256: \`$sha\`"
+            echo "- Before approving the marketplace environment: the owner checks on this run's vsix (publish-family.ps1 -Repo extension -CiRun $GITHUB_RUN_ID)."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: ${{ steps.pack.outputs.vsix }}
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    # Required reviewer (Meraj) and the tag rule live in this environment's settings.
+    environment: marketplace
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+      # The file published is the file the package job uploaded and the owner checked.
+      - name: Same file as packaged
+        env:
+          VSIX: ${{ needs.package.outputs.vsix }}
+          SHA256: ${{ needs.package.outputs.sha256 }}
+        run: |
+          echo "$SHA256  $VSIX" | sha256sum -c -
+      - name: Publish to the Marketplace (Trusted Publishing)
+        env:
+          VSIX: ${{ needs.package.outputs.vsix }}
+        run: npx --yes "$VSCE_PUBLISH" publish --oidc --packagePath "$VSIX"

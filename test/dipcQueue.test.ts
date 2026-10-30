@@ -65,6 +65,10 @@ describe('DIPC: Read Message text', () => {
 
   it('the command uses it', () => {
     const src = fs.readFileSync(path.join(root, 'src', 'extension.ts'), 'utf8');
-    assert.ok(src.includes('dipcMessageText(msg)'));
+    // The read takes the message off the queue: it asks (a change) and shows what it took.
+    assert.ok(src.includes('dipcMessageText(out.value)'));
+    const start = src.indexOf("tracedCommand('abbRobot.dipcReadMessage'");
+    const body = src.slice(start, src.indexOf('tracedCommand(', start + 1));
+    assert.match(body, /sendTo\(entry, \{\s*label: 'Read DIPC Message', tier: 'change', taskApplies: false,[\s\S]*?\(\) => entry\.manager\.readDipcMessage\(queue, 5000\)\)/);
   });
 });

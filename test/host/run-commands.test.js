@@ -40,6 +40,14 @@
 //   U3  the extension's read commands on the one controller, Refresh, Disconnect,
 //       then fresh credentials and a check that no session of the extension is left.
 //       Use RWS_TEST_USER='Default User' on an RWS 1.0 controller (http://127.0.0.1:<port>).
+//   L1  (writes, always alone) the 1.5.0 live checks (stub-ext/l1.js): the lock state around
+//       a watch-only connect and the connect's requests, a write refused in Watch only, the
+//       probe module ZZ_L1 pushed with the confirmation naming the robot and the task, the
+//       base check with Push anyway after a change through a second session, Restore Module,
+//       a forced load failure with the restore offer, a Latin-1 and a UTF-16 file refused, and
+//       on RobotWare 8 Motors On refused without Allow Motion Control, then allowed, on, off
+//       and withdrawn. Everything is put back and read back; the lock state is read at the end.
+//       Writes test/host/last-run-l1-<port>.json with every read-back.
 //
 // Before a run: close all VS Code windows. A pending VS Code update blocks the test
 // instance with "Code is currently being updated" (exit 1) until every window is closed.
@@ -73,6 +81,11 @@
 //                  (Windows) or bin/code beside VSCODE_EXE, else `code`
 //   RWS_TEST_VSCODE_ARGS  more arguments for the test instance, split on spaces;
 //                  CI on Linux: --no-sandbox --disable-gpu --password-store=basic
+//   RWS_TEST_STUB  real | none | virtual: start the stub controller (test/host/stub-rws.js)
+//                  and run against it, no controller needed. Runs step W1 unless RWS_TEST_ONLY
+//                  says otherwise: every write command with every dialog answered, on a
+//                  robot RAPID Live treats as watch-only (real, or one that does not say);
+//                  the run fails on any POST, PUT or DELETE the stub saw.
 //   RWS_TEST_ONLY  run only these steps, letters A-I (also `--only E` when the
 //                  file is run with plain `node test/host/run-commands.test.js --only E`)
 //   RWS_TEST_VSIX  the .vsix to install, default abb-rws-<version>.vsix in the repo
@@ -110,14 +123,17 @@ const { pathToFileURL } = require('node:url');
 const { getResource, spanText } = require('./stub-ext/probe.js');
 const { ROBOT_ID, ROBOT_NAME, ROBOT_ID_2, ROBOT_NAME_2, dialogsIn, requestsIn, allRequestsIn, verdicts, placeGuardRows, report } = require('./verdicts.js');
 const { targetFrom } = require('./target.js');
+const { startStub } = require('./stub-rws.js');
 
 const REPO = path.resolve(__dirname, '..', '..');
 // U1 (language features) needs no controller; every other run does, and without one it skips itself.
-const ONLY = onlySteps();
+// The stub controller to run against (real | none | virtual), or '' for a controller RWS_TEST_HOST names.
+const STUB = String(process.env.RWS_TEST_STUB || '').toLowerCase();
+const ONLY = onlySteps() || (STUB ? 'W1' : '');
 const NO_CONTROLLER_RUN = ONLY === 'U1';
 // The controller RWS_TEST_HOST names, or null (target.js); a value of neither form stops the file here.
 const TARGET = targetFrom(process.env);
-const NO_VC = TARGET || NO_CONTROLLER_RUN ? false : 'no VC: skipped (set RWS_TEST_HOST, e.g. https://127.0.0.1:80 for a RobotStudio VC on this PC)';
+const NO_VC = TARGET || NO_CONTROLLER_RUN || STUB ? false : 'no VC: skipped (set RWS_TEST_HOST, e.g. https://127.0.0.1:80 for a RobotStudio VC on this PC)';
 
 function baseUrl() {
   // A run without a controller (U1) still needs an address to write into the settings; nothing is sent to it.
@@ -150,8 +166,8 @@ function childEnv(extra) {
 function onlySteps() {
   const i = process.argv.indexOf('--only');
   const raw = i >= 0 ? process.argv[i + 1] : process.env.RWS_TEST_ONLY;
-  // Letters A-I are the write steps; U1-U3 the read-only acceptance steps (which never run with them).
-  return (String(raw || '').toUpperCase().match(/U[1-4]|[A-I]/g) || []).join('');
+  // Letters A-I are the write steps; U1-U3 the read-only acceptance steps (which never run with them); W1 the stub run.
+  return (String(raw || '').toUpperCase().match(/U[1-4]|W1|L1|[A-I]/g) || []).join('');
 }
 
 async function systemLine(target, user, pass) {
@@ -192,12 +208,15 @@ function readLogLines(sinceIso, untilIso) {
 if (NO_VC) { console.log(NO_VC); }
 
 test('RAPID Live commands in a real VS Code host', { timeout: 20 * 60 * 1000, skip: NO_VC }, async () => {
-  const target = baseUrl();
   const user = process.env.RWS_TEST_USER || 'Admin';
   const pass = process.env.RWS_TEST_PASS || 'robotics';
   const { exe, cli } = vscodePaths();
   const vsix = findVsix();
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'rapid-live-host-'));
+  // The stub controller, when asked for: it answers like a RobotWare 7 controller of the given kind and records every request.
+  const stubLog = path.join(work, 'stub-requests.jsonl');
+  const stub = STUB ? await startStub({ ctrlType: STUB, logFile: stubLog }) : null;
+  const target = stub ? targetFrom({ RWS_TEST_HOST: stub.url }) : baseUrl();
   const userData = path.join(work, 'user');
   const extDir = path.join(work, 'ext');
   const folder = path.join(work, 'ws');
@@ -227,7 +246,7 @@ test('RAPID Live commands in a real VS Code host', { timeout: 20 * 60 * 1000, sk
       'security.workspace.trust.enabled': false,
     }, null, 2));
 
-    const before = NO_CONTROLLER_RUN && !TARGET ? 'no controller (U1)' : await systemLine(target, user, pass);
+    const before = NO_CONTROLLER_RUN && !TARGET ? 'no controller (U1)' : stub ? `stub controller (${STUB}) at ${stub.url}` : await systemLine(target, user, pass);
     const started = new Date().toISOString();
     const args = [folder,
       `--extensionDevelopmentPath=${path.join(__dirname, 'stub-ext')}`,
@@ -241,6 +260,7 @@ test('RAPID Live commands in a real VS Code host', { timeout: 20 * 60 * 1000, sk
       HOSTTEST_ROBOT_ID: ROBOT_ID, HOSTTEST_ROBOT_NAME: ROBOT_NAME,
       HOSTTEST_ROBOT_ID_2: ROBOT_ID_2, HOSTTEST_ROBOT_NAME_2: ROBOT_NAME_2,
       HOSTTEST_ONLY: ONLY,
+      HOSTTEST_STUB: STUB, HOSTTEST_STUB_LOG: stubLog,
       HOSTTEST_USER_DATA: userData, HOSTTEST_FOLDER: folder,
       HOSTTEST_CLIENT: pathToFileURL(path.join(process.env.RWS_TEST_CLIENT || path.join(REPO, 'node_modules', 'abb-rws-client'), 'dist', 'index.js')).href,
     });
@@ -257,6 +277,7 @@ test('RAPID Live commands in a real VS Code host', { timeout: 20 * 60 * 1000, sk
     const result = JSON.parse(fs.readFileSync(out, 'utf8'));
     const log = readLogLines(started, result.finished || new Date().toISOString());
 
+    if (stub) { result.w1 = { ...(result.w1 || {}), writes: stub.writes().map(r => `${r.method} ${r.path}`), requests: stub.requests.length }; }
     const idle = result.steps.find(s => s.name === 'idle');
     const pollPaths = new Set(idle ? log.filter(l => l.category === 'http.req' && l.ts >= idle.start && l.ts <= idle.end).map(l => l.data && l.data.path) : []);
     const v = verdicts(result, log);
@@ -268,17 +289,22 @@ test('RAPID Live commands in a real VS Code host', { timeout: 20 * 60 * 1000, sk
     }));
 
     for (const key of Object.keys(v)) {
-      if (/^U[1-4] /.test(key) && !rows.some(r => r.step === key)) {
+      if (/^(U[1-4]|W1|L1) /.test(key) && !rows.some(r => r.step === key)) {
         rows.push({ step: key, command: '(derived)', dialogs: [], requests: [], verdict: v[key] });
       }
     }
     // A step that did not run says why, in its place (verdicts.js placeGuardRows).
     placeGuardRows(rows, v);
     result.before = before;
-    result.after = NO_CONTROLLER_RUN && !TARGET ? 'no controller (U1)' : await systemLine(target, user, pass);
+    result.after = NO_CONTROLLER_RUN && !TARGET ? 'no controller (U1)' : stub ? `stub controller: ${stub.requests.length} requests, ${stub.writes().length} writes` : await systemLine(target, user, pass);
     const md = report(target, result, log, rows);
     fs.writeFileSync(path.join(__dirname, 'last-run.md'), md);
     fs.writeFileSync(path.join(__dirname, `last-run-${target.port}.md`), md);
+    if (result.l1) {
+      // Every read-back of the 1.5.0 live checks, with the rows, the dialogs and the requests per step.
+      const l1 = { controller: target.url, started: result.started, finished: result.finished, before: result.before, after: result.after, ...result.l1, rows: rows, readbacks: result.readbacks, notes: result.l1.notes };
+      fs.writeFileSync(path.join(__dirname, `last-run-l1-${target.port}.json`), JSON.stringify(l1, null, 2));
+    }
 
     console.log(`\nController ${target.url}; operation mode at start: ${result.mode ?? 'not read'}${result.only ? `; steps ${result.only}` : ''}`);
     console.table(rows.map(r => ({
@@ -296,8 +322,16 @@ test('RAPID Live commands in a real VS Code host', { timeout: 20 * 60 * 1000, sk
     assert.deepStrictEqual((result.probes || []).filter(p => p.status !== 200).map(p => `after ${p.after}: ${p.status}`), []);
     const failed = rows.filter(r => /^FAIL/.test(r.verdict));
     assert.deepStrictEqual(failed.map(r => `${r.step}: ${r.verdict}`), []);
+    if (stub) {
+      // The stub run is the watch-only test: steps ran, and nothing that changes a controller left the extension.
+      assert.ok(rows.some(r => /^W1 /.test(r.step)), 'the stub run ran no W1 step');
+      assert.deepStrictEqual(stub.writes().map(r => `${r.method} ${r.path}`), [], 'a write reached the stub controller');
+    }
   } finally {
-    // The temp profile holds the test password in settings and secret storage.
-    fs.rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+    if (stub) { await stub.close(); }
+    // The temp profile holds the test password in settings and secret storage. On Windows the host can
+    // still hold a file for a moment after it exits: a profile that cannot be removed is named, not a failure.
+    try { fs.rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }); }
+    catch (e) { console.warn(`the temp profile ${work} could not be removed (${e && e.message ? e.message : String(e)}); remove it by hand`); }
   }
 });

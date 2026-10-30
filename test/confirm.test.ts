@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { confirmChoice, confirmRobot, confirmWrite, heartbeatWarning, restartSideEffects, robotLabel, type ConfirmRobot, type ConfirmUi } from '../src/confirm';
+import { confirmChoice, confirmRobot, confirmWrite, heartbeatWarning, restartSideEffects, robotLabel, startEffect, type ConfirmRobot, type ConfirmUi } from '../src/confirm';
 
 // The bundled test runs from out/test/, two levels below the extension root.
 const root = path.resolve(__dirname, '..', '..');
@@ -58,7 +58,7 @@ describe('confirmRobot', () => {
 });
 
 describe('confirmWrite, motion tier', () => {
-  const request = { label: 'Start RAPID', tier: 'motion' as const, sideEffects: ['Starts the RAPID program from the program pointer.'] };
+  const request = { label: 'Start RAPID', tier: 'motion' as const, taskApplies: false, sideEffects: ['Starts the RAPID program from the program pointer.'] };
 
   it('names the robot and the side effects in a modal, then asks for the typed name', async () => {
     const { u, shown } = ui({ modal: () => 'Continue', input: () => 'Cell 3' });
@@ -107,7 +107,7 @@ describe('confirmWrite, motion tier', () => {
 });
 
 describe('confirmChoice, motion tier with a second button (RobotWare 8: Allow Motion Control first…)', () => {
-  const request = { label: 'Start RAPID', tier: 'motion' as const, sideEffects: ['Starts the RAPID program.'], altButton: 'Allow Motion Control first…' };
+  const request = { label: 'Start RAPID', tier: 'motion' as const, taskApplies: false, sideEffects: ['Starts the RAPID program.'], altButton: 'Allow Motion Control first…' };
 
   it('offers both buttons; the second one sends nothing and asks for no name', async () => {
     const { u, shown } = ui({ modal: () => 'Allow Motion Control first…', input: () => { throw new Error('not asked'); } });
@@ -137,7 +137,7 @@ describe('confirmChoice, motion tier with a second button (RobotWare 8: Allow Mo
       + "Otherwise choose Continue, then type the robot's name, Cell 3, in the next box.");
     // A hint without its button says nothing of it.
     const { u: u2, shown: shown2 } = ui({ modal: () => undefined });
-    await confirmChoice(u2, cell, { label: 'Start RAPID', tier: 'motion', sideEffects: ['Starts the RAPID program.'], altHint: 'Never shown.' });
+    await confirmChoice(u2, cell, { label: 'Start RAPID', tier: 'motion', taskApplies: false, sideEffects: ['Starts the RAPID program.'], altHint: 'Never shown.' });
     assert.equal((shown2[0] as { detail: string }).detail, 'This can move the robot.\n\n• Starts the RAPID program.\n\n'
       + "Nothing is sent yet. Choose Continue, then type the robot's name, Cell 3, in the next box.");
   });
@@ -151,7 +151,7 @@ describe('confirmWrite, declaration tier', () => {
     typeName: true,
     typePrompt: "Type the robot's name to confirm that both stops are within your reach: Cell 3",
   };
-  const request = { label: 'Allow Motion Control', tier: 'declaration' as const, sideEffects: ['RAPID Live line.'], confirmation };
+  const request = { label: 'Allow Motion Control', tier: 'declaration' as const, taskApplies: false, sideEffects: ['RAPID Live line.'], confirmation };
 
   it('shows the client\'s title and lines first, then RAPID Live\'s, the client\'s button, then the client\'s name prompt', async () => {
     const { u, shown } = ui({ modal: () => 'Both stops are within my reach', input: () => 'Cell 3' });
@@ -190,7 +190,7 @@ describe('confirmWrite with no saved name', () => {
     for (const tier of ['motion', 'disruptive', 'change'] as const) {
       for (const name of ['', '   ']) {
         const { u, shown } = ui({ modal: () => { throw new Error('not asked'); }, input: () => '' });
-        const ok = await confirmWrite(u, { ...cell, name }, { label: 'Start RAPID', tier, sideEffects: ['x'] });
+        const ok = await confirmWrite(u, { ...cell, name }, { label: 'Start RAPID', tier, taskApplies: false, sideEffects: ['x'] });
         assert.equal(ok, false, `${tier} "${name}"`);
         assert.deepEqual(shown, [{ kind: 'warn', message: 'Start RAPID not sent: this robot has no saved name. Give it a name in the Robots view (Configure), then try again.' }]);
       }
@@ -200,7 +200,7 @@ describe('confirmWrite with no saved name', () => {
 
 describe('confirmWrite, disruptive tier', () => {
   const request = {
-    label: 'Restart', tier: 'disruptive' as const,
+    label: 'Restart', tier: 'disruptive' as const, taskApplies: false,
     sideEffects: ['RAPID stops and the controller restarts.', 'The connection drops until it is back.'],
   };
 
@@ -222,7 +222,7 @@ describe('confirmWrite, disruptive tier', () => {
 });
 
 describe('confirmWrite, change tier', () => {
-  const request = { label: 'Toggle signal', tier: 'change' as const, sideEffects: ['DO_1 changes from 0 to 1.'] };
+  const request = { label: 'Toggle signal', tier: 'change' as const, taskApplies: false, sideEffects: ['DO_1 changes from 0 to 1.'] };
 
   it('is one acknowledgement naming the robot', async () => {
     const { u, shown } = ui({ modal: (_m, _d, buttons) => buttons[0] });
@@ -269,11 +269,16 @@ describe('the write commands in extension.ts', () => {
     'abbRobot.writeSignal': 'change',
   };
 
-  it('each one asks through confirmWrite with its tier and resolves its robot entry once at the top', () => {
+  it('each one asks with its tier and resolves its robot entry once at the top', () => {
     for (const [id, tier] of Object.entries(tiers)) {
       const body = handler(id);
-      // Start RAPID, Run Routine and Jog ask through confirmMotion: on RobotWare 8 it adds the motion-control line.
-      assert.match(body, new RegExp(`confirm(Motion)?\\(entry, \\{[\\s\\S]*?tier: '${tier}'`), `${id}: ${tier}`);
+      // A migrated site asks and sends through sendTo or sendMotion (on RobotWare 8 the motion one adds the
+      // motion-control line); a site still in test/write-sites.baseline.json asks through confirm or confirmMotion.
+      // Jog builds its request first, so a repeat jog can send the same request with skipAsk.
+      const asks = id === 'abbRobot.jog'
+        ? /const request: ConfirmRequest = \{ label: 'Jog', tier: 'motion', taskApplies: false, sideEffects: jogConfirmEffects\(inc, mechunit, mode\) \};[\s\S]*?sendMotion\(entry, ask \? request : \{ \.\.\.request, skipAsk: 'jog-repeat' \}, /
+        : new RegExp(`(confirm(Motion)?|send(To|Motion))\\(entry, \\{[\\s\\S]*?tier: '${tier}'`);
+      assert.match(body, asks, `${id}: ${tier}`);
       assert.match(body, /const entry = (activeEntry\(multi\)|entryOf\(multi, arg\));/, `${id}: resolves its entry`);
       assert.doesNotMatch(body, /mgr\(multi\)|multi\.active\b/, `${id}: uses entry.manager, never the active robot at send time`);
     }
@@ -282,22 +287,27 @@ describe('the write commands in extension.ts', () => {
   it('the CFG write-back on save asks with the change tier on the robot the instance was opened from', () => {
     const start = src.indexOf('vscode.workspace.onDidSaveTextDocument(');
     const body = src.slice(start, src.indexOf('onDidCloseTextDocument', start));
-    assert.match(body, /confirm\(entry, \{[\s\S]*?tier: 'change'/);
+    assert.match(body, /sendTo\(entry, \{[\s\S]*?tier: 'change'/);
     assert.match(body, /entry\.manager\.setCfgInstance\(/);
   });
 
-  it('Run routine asks once for everything it does; the motors offer is folded into that confirmation', () => {
+  it('Run routine asks once for everything it does, and does it all inside that one send; the motors offer is folded into that confirmation', () => {
     const body = handler('abbRobot.runRoutineFromCodeLens');
-    assert.equal((body.match(/confirm(Motion)?\(entry/g) ?? []).length, 1);
-    assert.match(body, /confirmMotion\(entry, \{/);
+    assert.equal((body.match(/send(To|Motion)\(entry/g) ?? []).length, 1);
+    assert.match(body, /sendMotion\(entry, \{/);
     assert.doesNotMatch(body, /Turn motors ON before starting/);
+    // The load, the pointer move, the unload on a collision, the motors and the start are nested in the send arrow.
+    const send = body.slice(body.indexOf('}, async () => {'), body.indexOf("return 'started' as const;"));
+    for (const call of ['active.loadProgram(', 'active.setPPToRoutine(', 'active.unloadModule(', 'active.setMotorsOn()', 'active.startRapid()']) {
+      assert.ok(send.includes(call), call);
+    }
   });
 
   it('Run routine lists the motors and a possible unload in its dialog, and does nothing the dialog did not list', () => {
     const body = handler('abbRobot.runRoutineFromCodeLens');
     assert.ok(body.includes('modulesWithMain(active, taskName)'));
     assert.ok(body.includes("Unloads ${mainHolders.join(' or ')} if the controller refuses"));
-    assert.ok(body.includes('tryResolveMainCollision(active, taskName, moduleName, e, entry, mainHolders)'));
+    assert.ok(body.includes('tryResolveMainCollision(active, taskName, moduleName, e, entry, mainHolders, mod => withStopOffer('));
     assert.ok(body.includes('if (needsMotors) {'));
     assert.ok(!body.includes("opmode === 'AUTO' && active.state.ctrlstate !== 'motoron') {"));
   });
@@ -320,7 +330,7 @@ describe('the write commands in extension.ts', () => {
     const body = handler('abbRobot.restoreBackup');
     assert.ok(body.includes("'Keeps the backup on the controller: the restore asks the controller not to delete it.'"));
     // The vendored client sends ABB's delete-dir as false unless deleteBackup is asked for.
-    assert.match(body, /entry\.manager\.restoreBackup\(name\);/);
+    assert.match(body, /entry\.manager\.restoreBackup\(chosen\);/);
     assert.doesNotMatch(body, /deleteBackup/);
   });
 
@@ -328,6 +338,24 @@ describe('the write commands in extension.ts', () => {
     const io = fs.readFileSync(path.join(root, 'src', 'IoTreeProvider.ts'), 'utf8');
     assert.match(io, /command: 'abbRobot\.toggleSignal'/);
     assert.doesNotMatch(io, /writeIoSignal\(/);
+  });
+});
+
+describe('Run routine names every task the start runs (review finding 2)', () => {
+  const src = fs.readFileSync(path.join(root, 'src', 'extension.ts'), 'utf8');
+  const handler = (id: string): string => {
+    const start = src.indexOf(`tracedCommand('${id}'`);
+    assert.ok(start >= 0, id);
+    return src.slice(start, src.indexOf('tracedCommand(', start + 1));
+  };
+  it('one active task: the line as before; several: every other task is named, from its own pointer', () => {
+    assert.equal(startEffect('T_ROB1', [], 'M.r'), 'Starts RAPID there; the robot moves as the routine says.');
+    assert.equal(startEffect('T_ROB2', ['T_ROB1'], 'MainT2.main'),
+      'Starts RAPID for the whole execution: T_ROB2 from MainT2.main, and T_ROB1 from its current program pointer. Every robot of those tasks moves as its program says.');
+    assert.match(startEffect('T_ROB2', ['T_ROB1', 'T_ROB3'], 'M.r'), /and T_ROB1, T_ROB3 from their current program pointers\./);
+    const body = handler('abbRobot.runRoutineFromCodeLens');
+    assert.match(body, /const otherActive = activeTasks\(active\.state\)\.filter\(t => t !== taskName\);/);
+    assert.match(body, /startEffect\(taskName, otherActive, `\$\{moduleName\}\.\$\{routineName\}`\),/);
   });
 });
 
@@ -375,7 +403,7 @@ describe('restart side effects', () => {
   it('the Restart command builds its list from them; the jog confirmation is the shared wording; the module note only on refusals', () => {
     const src = fs.readFileSync(path.join(root, 'src', 'extension.ts'), 'utf8');
     assert.ok(src.includes('sideEffects: restartSideEffects(choice.value)'));
-    assert.ok(src.includes('sideEffects: jogConfirmEffects(inc)'));
+    assert.ok(src.includes('sideEffects: jogConfirmEffects(inc, mechunit, mode)'));
     const start = src.indexOf("tracedCommand('abbRobot.openModuleSource'");
     const body = src.slice(start, src.indexOf('tracedCommand(', start + 1));
     assert.ok(body.includes("showError('Open module source', e, entry, refusalOf(e)"));
@@ -415,13 +443,13 @@ describe('Edit Watched Value is bound to the row\'s robot', () => {
     assert.ok(provider.includes('robotId?: string'));
     assert.ok(body(provider, 'private async poll()', 'private async persist()').includes('w.robotId = entry.id'));
     const write = body(provider, 'async writeValue(', 'private async poll()');
-    assert.ok(write.includes('this.hooks.confirm(target'));
-    assert.ok(write.includes('target.manager.setRapidVariable('));
+    assert.ok(write.includes('sendConfirmed(this.hooks.guard.uiFor(target), this.hooks.guard.robotOf(target), {'));
+    assert.ok(write.includes('() => target.manager.setRapidVariable('));
     assert.doesNotMatch(write, /this\.manager\.active(?![A-Za-z])/);
   });
 
-  it('the extension hands the provider its confirmation and its bound error dialog', () => {
-    assert.match(ext, /new VariableWatchProvider\(multi, context, \{\s*confirm, showError,\s*taskFor: module => taskForModule\(activeEntry\(multi\), module, 'Add Variable to Watch'\),\s*\}\)/);
+  it('the extension hands the provider the send guard (its window and how a robot is named) and its bound error dialog', () => {
+    assert.match(ext, /new VariableWatchProvider\(multi, context, \{\s*guard: \{ uiFor: guardUiFor, robotOf: confirmRobotOf \}, showError,\s*taskFor: module => taskForModule\(activeEntry\(multi\), module, 'Add Variable to Watch'\),\s*\}\)/);
   });
 });
 

@@ -185,14 +185,15 @@ describe('the error path in extension.ts', () => {
     const start = src.indexOf("tracedCommand('abbRobot.setOpMode'");
     const body = src.slice(start, src.indexOf('tracedCommand(', start + 1));
     // No local refusal before the quick pick: the only returns before the send
-    // are not connected, a cancelled pick, the same mode and a cancelled confirmation.
+    // are not connected, a cancelled pick and the same mode; a cancelled
+    // confirmation sends nothing inside the wrapper.
     assert.doesNotMatch(body, /Cannot change op-mode/);
     assert.doesNotMatch(body, /ctrlstate === 'guardstop'|ctrlstate === 'emergencystop'/);
     const send = body.indexOf('entry.manager.setOperationMode(');
     assert.ok(send > 0);
     const returns = body.slice(0, send).match(/return;/g) ?? [];
-    assert.equal(returns.length, 4);
-    assert.match(body.slice(0, send), /if \(!await confirm\(entry, opModeRequest\(current, pick\.label\)\)\) \{ return; \}/);
+    assert.equal(returns.length, 3);
+    assert.match(body.slice(0, send), /sendTo\(entry, opModeRequest\(current, pick\.label\), \(\) => vscode\.window\.withProgress\(/);
   });
 
   it('Open Module Source says a file is written and deleted on the controller', () => {

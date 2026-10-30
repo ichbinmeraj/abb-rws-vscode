@@ -3,6 +3,7 @@ import * as assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { MultiRobotManager, type FoundController } from 'abb-rws-client';
+import { unverifiedPortQuestion, unverifiedWriteRefusal } from '../src/portRecovery';
 import {
   LAST_SEEN_KEY, connectWithRetries, differentSystemQuestion, elsewhereMessage, foundControllerText, goneMessage,
   identityVerdict, lastSeenText, movedPortCandidates, movedPortQuestion, noAnswerMessage, onceAtATime, planConnect,
@@ -560,5 +561,28 @@ describe('Connect: the client gives a robot a fresh manager in place', () => {
     assert.equal(after.config.port, 5470);
     assert.equal(multi.activeId, 'r1');
     assert.equal(multi.active, after.manager);
+  });
+});
+
+describe('a scanned port the controller has not confirmed (tracker 573)', () => {
+  it('the question names the robot, the port, the robot last seen, and says writes are held and nothing is sent', () => {
+    const q = unverifiedPortQuestion('Cell 3', 5470, { systemId: '{abc}', systemName: 'IRB1200_VC', rwVersion: '7.21.4' });
+    assert.equal(q.message, 'Save port 5470 for "Cell 3"?');
+    assert.equal(q.button, 'Save port 5470');
+    assert.match(q.detail, /found by scanning this PC\. The controller did not say its system id, so RAPID Live cannot confirm it is the one last seen \(IRB1200_VC \(system id \{abc\}\)\)\. Writes to it are held back until the controller confirms it\. Nothing is sent by this choice\.$/);
+    assert.match(unverifiedPortQuestion('Cell 3', 80, { systemId: '{abc}' }).detail, /last seen \(system \{abc\}\)/);
+  });
+
+  it('the refusal names the robot and the way back', () => {
+    assert.equal(unverifiedWriteRefusal('Start RAPID', 'Cell 3 (127.0.0.1:5470)'),
+      'Start RAPID not sent: Cell 3 (127.0.0.1:5470) answered on a port RAPID Live found by scanning, and the controller has not confirmed its system id yet. Connect again once it has, or check the robot\'s address.');
+  });
+
+  it('the connect asks before saving such a port, holds writes through the refusal hook, and lets go once a reading confirms or the session ends', () => {
+    const src = fs.readFileSync(path.join(root, 'src', 'extension.ts'), 'utf8');
+    assert.match(src, /if \(outcome\.verifyLater && last\) \{[\s\S]*?unverifiedPorts\.add\(id\);\s*const q = unverifiedPortQuestion\(name, outcome\.port, last\);[\s\S]*?=== q\.button\) \{ await saveConnectedPort\(id, name, saved, outcome\); \}/);
+    assert.match(src, /if \(unverifiedPorts\.has\(entry\.id\)\) \{ return unverifiedWriteRefusal\(label, robotLabel\(confirmRobotOf\(entry\)\)\); \}/);
+    assert.match(src, /unverifiedSessions\.delete\(id\); unverifiedPorts\.delete\(id\); return; \}/);
+    assert.match(src, /unverifiedSessions\.delete\(id\);\s*unverifiedPorts\.delete\(id\);\s*if \(verdict === 'different' && reading\)/);
   });
 });

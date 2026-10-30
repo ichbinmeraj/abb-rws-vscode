@@ -14,12 +14,12 @@ export function declaresMain(text: string): boolean {
   return /\bPROC\s+main\s*\(/i.test(text);
 }
 
-/** The confirmation for PP to Main after a load, naming the tasks it moves. */
-export function ppToMainRequest(tasks: string[]): ConfirmRequest {
+/** The confirmation for PP to Main (and Reset RAPID, the same move under its own label), naming the tasks it moves. */
+export function ppToMainRequest(tasks: string[], label: string = 'PP to Main'): ConfirmRequest {
   const moves = tasks.length > 1
     ? `Moves the program pointer to main for the whole execution, in every task it runs: ${tasks.join(', ')}.`
     : `Moves the program pointer of ${tasks[0] ?? 'the task'} to main.`;
-  return { label: 'PP to Main', tier: 'disruptive', sideEffects: [moves] };
+  return { label, tier: 'disruptive', taskApplies: true, tasks, sideEffects: [moves] };
 }
 
 export const PP_TO_MAIN_BUTTON = 'PP to Main…';
@@ -30,10 +30,12 @@ export interface AfterLoadUi {
   info(message: string): void;
   /** The success message with one button; true when the person chose it. */
   offer(message: string, button: string): PromiseLike<boolean>;
-  /** The confirmation naming the robot (`confirm(entry, …)` in the extension). */
-  confirm(request: ConfirmRequest): PromiseLike<boolean>;
-  /** The move itself (`resetRapid`); its own errors are reported by the caller. */
-  resetRapid(): Promise<void>;
+  /**
+   * The move, behind its confirmation naming the robot and the tasks
+   * (`sendTo(entry, request, () => resetRapid())` in the extension); true when
+   * it was sent. Its own errors are reported by the extension.
+   */
+  moveToMain(request: ConfirmRequest): PromiseLike<boolean>;
 }
 
 /**
@@ -44,7 +46,5 @@ export interface AfterLoadUi {
 export async function afterLoad(ui: AfterLoadUi, text: string, success: string, tasks: string[]): Promise<'no-main' | 'kept' | 'moved'> {
   if (!declaresMain(text)) { ui.info(success); return 'no-main'; }
   if (!await ui.offer(`${success} The program pointer was not moved.`, PP_TO_MAIN_BUTTON)) { return 'kept'; }
-  if (!await ui.confirm(ppToMainRequest(tasks))) { return 'kept'; }
-  await ui.resetRapid();
-  return 'moved';
+  return await ui.moveToMain(ppToMainRequest(tasks)) ? 'moved' : 'kept';
 }

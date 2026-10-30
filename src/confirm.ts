@@ -1,8 +1,16 @@
 // Confirmations before a write: the parts that need no `vscode`, so the unit
 // tests can state the dialog texts.
 //
-// A confirmation names the robot and blocks nothing: a cancelled one sends
-// nothing, a confirmed one sends. There is no setting that skips one.
+// A confirmation names the robot and, where one applies, the task, and
+// blocks nothing: a cancelled one sends nothing, a confirmed one sends. There
+// is no setting that skips one.
+//
+// Since 1.5.0 the confirmation and the send are one call: `sendConfirmed`
+// asks and then runs the write it was given, and `sendReducing` runs a write
+// that only stops or gives up, with no dialog. Every call to a client write
+// method in src/ sits inside one of them (test/writeSites.test.ts scans for
+// it), so a write cannot leave RAPID Live without the dialog that names the
+// robot.
 
 import type { RemedyConfirmation } from 'abb-rws-client';
 
@@ -36,6 +44,23 @@ export interface ConfirmRequest {
   /** What the write does on the controller, one sentence each; for `declaration`, RAPID Live's own lines. */
   sideEffects: string[];
   /**
+   * Whether the write goes to a RAPID task. Required, so every request states
+   * it: true with `task` (one task) or `tasks` (the whole execution), false
+   * for a write that has no task (a signal, the clock, a file). A request
+   * that says true and names none is a fault: `sendConfirmed` sends nothing.
+   */
+  taskApplies: boolean;
+  /** The one task the write goes to; the title says "in <task>" and the detail "Task: <task>". */
+  task?: string;
+  /** An execution-wide write (Start, PP to Main): every task the write acts on. */
+  tasks?: string[];
+  /**
+   * The one dialog that may be skipped: a repeat jog, after the first jog of
+   * this robot and connection was confirmed at this increment or a higher one
+   * (`jogNeedsAsk`). No other value exists, and the source scan refuses any other.
+   */
+  skipAsk?: 'jog-repeat';
+  /**
    * `motion` only: paragraphs shown apart from what the write does, after it
    * (RobotWare 8: whether motion control is allowed from this station).
    */
@@ -54,6 +79,15 @@ export interface ConfirmRequest {
 
 /** How a confirmation ended: confirmed (send), cancelled (send nothing), or the second button (send nothing). */
 export type ConfirmChoice = 'confirmed' | 'cancelled' | 'alt';
+
+/** The task words of a dialog: " in <task>" for the title, "Task: …" or "Tasks: …" for the detail, and the log's form. */
+export function taskWords(request: Pick<ConfirmRequest, 'task' | 'tasks'>): { title: string; line: string | undefined; log: string } {
+  if (request.task) { return { title: ` in ${request.task}`, line: `Task: ${request.task}`, log: request.task }; }
+  const tasks = request.tasks ?? [];
+  if (tasks.length === 1) { return { title: '', line: `Task: ${tasks[0]}`, log: tasks[0] }; }
+  if (tasks.length > 1) { return { title: '', line: `Tasks: ${tasks.join(', ')} (the controller runs them together)`, log: tasks.join(',') }; }
+  return { title: '', line: undefined, log: 'none' };
+}
 
 /** The window the confirmation talks through (`vscode.window` in the extension). */
 export interface ConfirmUi {
@@ -110,7 +144,9 @@ export async function confirmWrite(ui: ConfirmUi, robot: ConfirmRobot, request: 
  * caller decides what follows).
  */
 export async function confirmChoice(ui: ConfirmUi, robot: ConfirmRobot, request: ConfirmRequest): Promise<ConfirmChoice> {
-  const message = `${request.label} on ${robotLabel(robot)}`;
+  const task = taskWords(request);
+  const message = `${request.label}${task.title} on ${robotLabel(robot)}`;
+  const taskLine = task.line ? `${task.line}\n` : '';
   const name = robot.name.trim();
   if (!name) {
     // An empty name would match an empty box: nothing to confirm against, so nothing is sent.
@@ -132,7 +168,7 @@ export async function confirmChoice(ui: ConfirmUi, robot: ConfirmRobot, request:
       const choose = request.altButton && request.altHint
         ? `${request.altHint} Otherwise choose Continue`
         : 'Choose Continue';
-      const detail = `This can move the robot.\n\n${bullets(request.sideEffects)}\n\n${notes}`
+      const detail = `${taskLine}This can move the robot.\n\n${bullets(request.sideEffects)}\n\n${notes}`
         + `Nothing is sent yet. ${choose}, then type the robot's name, ${name}, in the next box.`;
       const buttons = request.altButton ? ['Continue', request.altButton] : ['Continue'];
       const chosen = await ui.modal(message, detail, buttons);
@@ -154,13 +190,111 @@ export async function confirmChoice(ui: ConfirmUi, robot: ConfirmRobot, request:
     }
     case 'disruptive': {
       const button = `Continue on ${name}`;
-      return await ui.modal(message, bullets(request.sideEffects), [button]) === button ? 'confirmed' : 'cancelled';
+      return await ui.modal(message, taskLine + bullets(request.sideEffects), [button]) === button ? 'confirmed' : 'cancelled';
     }
     case 'change': {
       const button = `Write to ${name}`;
-      return await ui.modal(message, bullets(request.sideEffects), [button]) === button ? 'confirmed' : 'cancelled';
+      return await ui.modal(message, taskLine + bullets(request.sideEffects), [button]) === button ? 'confirmed' : 'cancelled';
     }
   }
+}
+
+// ─── The send wrappers ───────────────────────────────────────────────────────
+
+/** The window and the log the wrappers talk through (`vscode.window` and the extension log). */
+export interface GuardUi extends ConfirmUi {
+  /** One line before each send: `write <label> robot=<name> task=<task|tasks|none> tier=<tier>`. */
+  log(line: string): void;
+  /** Tests: a request that names no task where one applies throws instead of warning. */
+  strict?: boolean;
+  /**
+   * The per-robot mode (src/watchMode.ts): the sentence that refuses this
+   * write before any dialog, or undefined to go on. Required, so no window
+   * without the mode seam can be handed to a wrapper; the unit tests of the
+   * dialogs answer undefined.
+   */
+  refuse(label: string, robot: ConfirmRobot): string | undefined;
+  /** How a refusal is shown: `warn` unless given (the extension adds the switch button). */
+  showRefusal?(sentence: string, robot: ConfirmRobot): void;
+}
+
+/** Show the refusal the mode seam gave. */
+function showRefusal(ui: GuardUi, sentence: string, robot: ConfirmRobot): void {
+  if (ui.showRefusal) { ui.showRefusal(sentence, robot); } else { ui.warn(sentence); }
+}
+
+/** How a send ended: sent (with the write's own result), or not, and why. */
+export type SendOutcome<T> =
+  | { sent: true; value: T }
+  | { sent: false; why: 'cancelled' | 'alt' | 'no-task' | 'watch-only' };
+
+export interface SendOptions {
+  /**
+   * How to ask: `confirmChoice` unless given. The motion flows pass the loop
+   * that adds the RobotWare 8 motion-control line and its Allow button
+   * (`confirmMotionWrite`).
+   */
+  ask?: (ui: GuardUi, robot: ConfirmRobot, request: ConfirmRequest) => PromiseLike<ConfirmChoice>;
+}
+
+/** The trace line of one send, as the log and the host test read it. */
+export function writeTrace(label: string, robot: ConfirmRobot, task: string, tier: string): string {
+  return `write ${label} robot=${robot.name} task=${task} tier=${tier}`;
+}
+
+/**
+ * Ask, then send. In this order: a request that says a task applies and
+ * names none sends nothing (a fault in RAPID Live, said as such); the mode
+ * seam; the dialog at the request's tier (skipped for a repeat jog only);
+ * then `send`, after one trace line. Anything but a confirmation sends
+ * nothing and says why. An error `send` throws is the caller's to show, as
+ * before.
+ */
+export async function sendConfirmed<T>(
+  ui: GuardUi, robot: ConfirmRobot, request: ConfirmRequest, send: () => PromiseLike<T>, options: SendOptions = {},
+): Promise<SendOutcome<T>> {
+  const task = taskWords(request);
+  if (request.taskApplies && task.log === 'none') {
+    ui.log(`write ${request.label} robot=${robot.name} not sent: the request says a task applies and names none`);
+    const text = `${request.label} not sent: no task was named. This is a fault in RAPID Live; the log has the details.`;
+    if (ui.strict) { throw new Error(text); }
+    ui.warn(text);
+    return { sent: false, why: 'no-task' };
+  }
+  const refusal = ui.refuse(request.label, robot);
+  if (refusal !== undefined) { showRefusal(ui, refusal, robot); return { sent: false, why: 'watch-only' }; }
+  if (request.skipAsk !== 'jog-repeat') {
+    const choice = await (options.ask ?? confirmChoice)(ui, robot, request);
+    if (choice !== 'confirmed') { return { sent: false, why: choice }; }
+  }
+  ui.log(writeTrace(request.label, robot, task.log, request.tier));
+  return { sent: true, value: await send() };
+}
+
+/** A write that only stops or gives up: Stop RAPID, Motors Off, Withdraw Motion Control, the release of this tool's own locks. */
+export interface ReducingRequest {
+  label: string;
+  /**
+   * True for a write that only gives up access RAPID Live holds (a withdrawal,
+   * a release): the mode seam never refuses it, so a robot can always be let go.
+   */
+  exemptFromWatchOnly?: boolean;
+}
+
+/**
+ * Send a reducing write with no dialog: one click stays one click. The mode
+ * seam still runs, unless the request is exempt. The source scan allows only
+ * Stop, Motors Off, the withdrawal and the lock release inside it.
+ */
+export async function sendReducing<T>(
+  ui: GuardUi, robot: ConfirmRobot, request: ReducingRequest, send: () => PromiseLike<T>,
+): Promise<SendOutcome<T>> {
+  if (!request.exemptFromWatchOnly) {
+    const refusal = ui.refuse(request.label, robot);
+    if (refusal !== undefined) { showRefusal(ui, refusal, robot); return { sent: false, why: 'watch-only' }; }
+  }
+  ui.log(writeTrace(request.label, robot, 'none', 'reducing'));
+  return { sent: true, value: await send() };
 }
 
 /**
@@ -206,15 +340,20 @@ export function isRapidRunning(execstate: string | null | undefined): boolean {
 /**
  * Set Speed Ratio: a value change; disruptive when the new ratio is higher
  * than the current one while RAPID runs, because a running motion speeds up.
+ * A current ratio of null is unread (before the first poll, or after a failed
+ * read): the dialog says so instead of a number, and while RAPID runs the
+ * write is disruptive, since the motion may speed up.
  */
-export function speedRatioRequest(current: number, next: number, running: boolean): ConfirmRequest {
-  const raising = running && next > current;
+export function speedRatioRequest(current: number | null, next: number, running: boolean): ConfirmRequest {
+  const unread = current === null;
+  const raising = running && (unread || next > current);
   return {
     label: 'Set Speed Ratio',
     tier: raising ? 'disruptive' : 'change',
+    taskApplies: false,
     sideEffects: [
-      `Changes the speed ratio from ${current} % to ${next} %.`,
-      ...(raising ? ['RAPID is running: a motion in progress goes faster.'] : []),
+      unread ? `Changes the speed ratio from an unread value to ${next} %.` : `Changes the speed ratio from ${current} % to ${next} %.`,
+      ...(raising ? [unread ? 'RAPID is running and the current ratio is not read: a motion in progress may go faster.' : 'RAPID is running: a motion in progress goes faster.'] : []),
     ],
   };
 }
@@ -224,6 +363,7 @@ export function opModeRequest(from: string, to: string): ConfirmRequest {
   return {
     label: `Switch operation mode to ${to}`,
     tier: 'disruptive',
+    taskApplies: false,
     sideEffects: [
       `Asks the controller to change from ${from} to ${to}; the controller may wait for an Accept at the FlexPendant.`,
       'Virtual controller only: a real controller has the key switch.',
@@ -233,22 +373,40 @@ export function opModeRequest(from: string, to: string): ConfirmRequest {
 
 /** A simulation action that only a virtual controller takes: disruptive, and says so. */
 export function virtualOnlyRequest(label: string, effects: string[]): ConfirmRequest {
-  return { label, tier: 'disruptive', sideEffects: [...effects, 'Virtual controller only.'] };
+  return { label, tier: 'disruptive', taskApplies: false, sideEffects: [...effects, 'Virtual controller only.'] };
 }
 
 /**
- * A program change (pointer move, unload) that asks (change tier) only while
- * RAPID runs. Undefined: nothing to ask.
+ * A program change (pointer move, unload) in one task. It always asks; while
+ * RAPID runs the first line says so. Set PP to Routine and the service-routine
+ * pointer move are a change; Unload Module is disruptive (a module loaded at
+ * the FlexPendant and unloaded here has no copy).
  */
-export function whileRunningRequest(label: string, running: boolean, effects: string[]): ConfirmRequest | undefined {
-  if (!running) { return undefined; }
-  return { label, tier: 'change', sideEffects: ['RAPID is running.', ...effects] };
+export function programChangeRequest(label: string, running: boolean, tier: 'change' | 'disruptive', effects: string[], task: string): ConfirmRequest {
+  return { label, tier, taskApplies: true, task, sideEffects: [...(running ? ['RAPID is running.'] : []), ...effects] };
 }
+
+/**
+ * The start line of a Run routine dialog. The client's start takes no task:
+ * it starts the whole execution, so on a multi-task system every other active
+ * task runs too, from its own program pointer, and the dialog names them.
+ */
+export function startEffect(task: string, otherActive: string[], target: string): string {
+  if (otherActive.length === 0) { return 'Starts RAPID there; the robot moves as the routine says.'; }
+  const pointers = otherActive.length === 1 ? 'its current program pointer' : 'their current program pointers';
+  return `Starts RAPID for the whole execution: ${task} from ${target}, and ${otherActive.join(', ')} from ${pointers}. Every robot of those tasks moves as its program says.`;
+}
+
+/** What a jog confirmation covered: the axis value, the mechanical unit and the Motion view's axis labels. */
+export interface JogConfirmed { value: number; unit: string; labels: string }
 
 /**
  * Whether the first-jog confirmation must be asked: never given on this
- * connection, or the axis value is now higher than the one confirmed.
+ * connection, the axis value is now higher than the one confirmed, the jog
+ * goes to another unit (names compared without case, as RAPID compares them),
+ * or the axis labels changed since (the dialog names them).
  */
-export function jogNeedsAsk(confirmedValue: number | undefined, value: number): boolean {
-  return confirmedValue === undefined || value > confirmedValue;
+export function jogNeedsAsk(confirmed: JogConfirmed | undefined, now: JogConfirmed): boolean {
+  return confirmed === undefined || now.value > confirmed.value
+    || now.unit.toLowerCase() !== confirmed.unit.toLowerCase() || now.labels !== confirmed.labels;
 }

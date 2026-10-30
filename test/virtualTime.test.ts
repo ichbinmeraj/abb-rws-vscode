@@ -3,8 +3,8 @@ import * as assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
-  VIRTUAL_TIME_ACTIONS, VIRTUAL_TIME_NO_PAUSE, VIRTUAL_TIME_NOT_SET_RW6, runVirtualTimeAction, virtualTimeActionsFor,
-  virtualTimeNotice, virtualTimeSummary, virtualTimeWritable, type VirtualTimeRobot,
+  VIRTUAL_TIME_ACTIONS, VIRTUAL_TIME_NO_PAUSE, VIRTUAL_TIME_NOT_SET_RW6, virtualTimeActionsFor,
+  virtualTimeNotice, virtualTimeScaleFor, virtualTimeSummary, virtualTimeWritable,
 } from '../src/virtualTime';
 
 // The bundled test runs from out/test/, two levels below the extension root.
@@ -31,14 +31,11 @@ describe('Show / Control Virtual Time', () => {
       `Virtual time: 1.0 s - running. ${VIRTUAL_TIME_NO_PAUSE}`);
   });
 
-  it('the speed actions set the scale and never touch the clock state', async () => {
-    const calls: unknown[][] = [];
-    const robot: VirtualTimeRobot = { setVirtualTimeScale: async (s: number) => { calls.push(['scale', s]); } };
-    await runVirtualTimeAction(robot, 'Set scale 1x');
-    await runVirtualTimeAction(robot, 'Set scale 10x');
-    await runVirtualTimeAction(robot, undefined);
-    await runVirtualTimeAction(robot, 'Pause/Resume');
-    assert.deepEqual(calls, [['scale', 1], ['scale', 10]]);
+  it('the speed actions name the scale to set; anything else sends nothing', () => {
+    assert.equal(virtualTimeScaleFor('Set scale 1x'), 1);
+    assert.equal(virtualTimeScaleFor('Set scale 10x'), 10);
+    assert.equal(virtualTimeScaleFor(undefined), undefined);
+    assert.equal(virtualTimeScaleFor('Pause/Resume'), undefined);
   });
 
   it('the command in extension.ts goes through the module and never calls setVirtualTimeRunning', () => {
@@ -48,7 +45,8 @@ describe('Show / Control Virtual Time', () => {
     const body = src.slice(start, src.indexOf('tracedCommand(', start + 1));
     assert.ok(body.includes("virtualTimeActionsFor(gen)"));
     assert.ok(body.includes("virtualTimeNotice(vt, gen)"));
-    assert.match(body, /runVirtualTimeAction\(/);
+    assert.match(body, /const scale = virtualTimeScaleFor\(action, gen\);\s*if \(scale === undefined\) \{ return; \}/);
+    assert.match(body, /sendTo\(entry, virtualOnlyRequest\(action, [\s\S]*?\(\) => m\.setVirtualTimeScale\(scale\)\)/);
     assert.doesNotMatch(body, /Pause|Resume|setVirtualTimeRunning/);
     assert.doesNotMatch(src, /setVirtualTimeRunning/);
   });
@@ -106,15 +104,11 @@ describe('Virtual Time on RobotWare 6: RAPID Live does not set it in this releas
     assert.equal(virtualTimeNotice(vt, 'rw8'), virtualTimeSummary(vt));
   });
 
-  it('a command still invoked on RobotWare 6 sends nothing, whatever action it carries', async () => {
-    const calls: unknown[][] = [];
-    const robot: VirtualTimeRobot = { setVirtualTimeScale: async (s: number) => { calls.push(['scale', s]); } };
-    await runVirtualTimeAction(robot, 'Set scale 1x', 'rw6');
-    await runVirtualTimeAction(robot, 'Set scale 10x', 'rw6');
-    await runVirtualTimeAction(robot, 'Set scale 10x', null);
-    assert.deepEqual(calls, []);
-    await runVirtualTimeAction(robot, 'Set scale 10x', 'rw7');
-    assert.deepEqual(calls, [['scale', 10]]);
+  it('a command still invoked on RobotWare 6 sends nothing, whatever action it carries', () => {
+    assert.equal(virtualTimeScaleFor('Set scale 1x', 'rw6'), undefined);
+    assert.equal(virtualTimeScaleFor('Set scale 10x', 'rw6'), undefined);
+    assert.equal(virtualTimeScaleFor('Set scale 10x', null), undefined);
+    assert.equal(virtualTimeScaleFor('Set scale 10x', 'rw7'), 10);
   });
 
   it('the command reads the generation of the robot it acts on', () => {

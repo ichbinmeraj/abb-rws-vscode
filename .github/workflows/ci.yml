@@ -10,10 +10,10 @@ env:
   # pins. The lock's sha512 only matches a tarball packed from this exact tag; when
   # the pin moves to another client release, this tag, CLIENT_INTEGRITY and the lock
   # move with it (test/hostVerdicts.test.ts checks that the three agree).
-  CLIENT_REF: v1.5.1
+  CLIENT_REF: v1.5.3
   # The lock's integrity of that tarball; the vendor step checks the packed one
   # against it before npm ci, so a tag that packs to another tarball says so.
-  CLIENT_INTEGRITY: sha512-/SKofeWCO4f0CdTgBz5c3zcx+AOZYgUDw5fDcCJM4dj2aqv9CBleGp+9TMFD9iTL+oTBt0ykuXcgnNy82hBuzA==
+  CLIENT_INTEGRITY: sha512-3xBcoQVVJJQOIBeDRn73wu1RYXWS0QmVPligLzafWCTII9OVJ5AegF67gf2ckOI7zZrQQIM2A2RhqtV1WlGAyw==
 
 jobs:
   build:
@@ -72,16 +72,40 @@ jobs:
           VSCODE_EXE: ${{ runner.temp }}/VSCode-linux-x64/code
           RWS_TEST_VSCODE_ARGS: --no-sandbox --disable-gpu --password-store=basic
         run: xvfb-run -a npm run test:host
+      # W1: the stub controller (test/host/stub-rws.js) answers as a real controller, then as one that
+      # does not say what it is; RAPID Live is watch-only on both, and every write command is run with
+      # its dialogs answered. The run fails on any POST, PUT or DELETE the stub sees.
+      - name: Host step W1 against the stub controller (real) under xvfb
+        id: w1real
+        if: always()
+        env:
+          RWS_TEST_ONLY: W1
+          RWS_TEST_STUB: real
+          VSCODE_EXE: ${{ runner.temp }}/VSCode-linux-x64/code
+          RWS_TEST_VSCODE_ARGS: --no-sandbox --disable-gpu --password-store=basic
+        run: xvfb-run -a npm run test:host
+      - name: Host step W1 against the stub controller (no type) under xvfb
+        id: w1none
+        if: always()
+        env:
+          RWS_TEST_ONLY: W1
+          RWS_TEST_STUB: none
+          VSCODE_EXE: ${{ runner.temp }}/VSCode-linux-x64/code
+          RWS_TEST_VSCODE_ARGS: --no-sandbox --disable-gpu --password-store=basic
+        run: xvfb-run -a npm run test:host
       - name: What this job ran
         if: always()
         env:
           U1: ${{ steps.u1.outcome }}
+          W1REAL: ${{ steps.w1real.outcome }}
+          W1NONE: ${{ steps.w1none.outcome }}
         run: |
           code_version="$("$RUNNER_TEMP/VSCode-linux-x64/bin/code" --version 2>/dev/null | head -1 || true)"
           {
             echo "### Host harness in CI"
             echo "- Steps A-I and U2-U4 need a controller: not run here (no RWS_TEST_HOST), each skipped itself."
             echo "- Step U1 in VS Code ${code_version:-(not downloaded)} for Linux under xvfb: ${U1:-not run}. Its record is test/host/last-run.md in the host-u1 artifact."
+            echo "- Step W1 against the stub controller, watch-only: as a real controller ${W1REAL:-not run}, as one that does not say ${W1NONE:-not run}. Every write command ran with its dialogs answered; the run fails on any write the stub sees."
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()

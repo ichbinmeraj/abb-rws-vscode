@@ -17,7 +17,8 @@ const testOptions = {
   entryPoints: ['test/*.test.ts'],
   bundle: true,
   outdir: 'out/test',
-  external: ['vscode'],
+  // typescript stays external: test/writeSites.test.ts parses the sources with the compiler API.
+  external: ['vscode', 'typescript'],
   format: 'cjs',
   platform: 'node',
   sourcemap: 'inline',

@@ -204,11 +204,13 @@ describe('Known limits in the README', () => {
     // It is inside runAllow, after the confirmation, whose request has the tier declaration.
     const from = mc.indexOf('export async function runAllow(');
     const allow = mc.slice(from, mc.indexOf('\n}\n', from));
-    const confirmed = allow.indexOf('if (!await confirmWrite(ui, ctx.robot, request)) { return \'not-sent\'; }');
-    assert.ok(confirmed > 0, 'the allow flow asks through confirmWrite and returns when it is not confirmed');
+    // The set is the write of one sendConfirmed call: the dialog (tier declaration) comes before it, and nothing is sent when it is not confirmed.
+    const confirmed = allow.indexOf('const out = await sendConfirmed(ui, ctx.robot, request, async () => {');
+    assert.ok(confirmed > 0, 'the allow flow asks and sends through sendConfirmed');
     assert.ok(confirmed < allow.indexOf('setAllowMotionControl(true)'), 'the confirmation comes before the call');
+    assert.match(allow, /if \(!out\.sent\) \{ return 'not-sent'; \}/);
     assert.match(allow, /const request = declarationRequest\(confirmation, /);
-    assert.match(mc, /return \{ label: ALLOW_LABEL, tier: 'declaration', sideEffects: lines, confirmation \};/);
+    assert.match(mc, /return \{ label: ALLOW_LABEL, tier: 'declaration', taskApplies: false, sideEffects: lines, confirmation \};/);
   });
 
   it('says the MP line reads the motionpointer entry on both generations, what the client read with a program running, and why the read stays listed', () => {

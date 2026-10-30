@@ -19,7 +19,7 @@
 
 import { RwsError, confirmationFor } from 'abb-rws-client';
 import type { AccessEvent, LocalStationStatus, MotionControlCause, RefusalRemedy, RemedyConfirmation } from 'abb-rws-client';
-import { confirmChoice, confirmWrite, robotLabel, type ConfirmRequest, type ConfirmRobot, type ConfirmUi } from './confirm';
+import { confirmChoice, robotLabel, sendConfirmed, sendReducing, type ConfirmRequest, type ConfirmRobot, type ConfirmUi, type GuardUi } from './confirm';
 import { FIXED_STATION_NEXT_STEP } from './refusalUi';
 
 type Generation = 'rw6' | 'rw7' | 'rw8' | null;
@@ -332,7 +332,7 @@ export function rapidLiveLines(remote: RemoteWindow | null, withdrawOnSwitch: bo
 
 /** The Allow confirmation: the client's text (`confirmationFor`), then RAPID Live's lines. */
 export function declarationRequest(confirmation: RemedyConfirmation, lines: string[]): ConfirmRequest {
-  return { label: ALLOW_LABEL, tier: 'declaration', sideEffects: lines, confirmation };
+  return { label: ALLOW_LABEL, tier: 'declaration', taskApplies: false, sideEffects: lines, confirmation };
 }
 
 /**
@@ -403,7 +403,7 @@ export function allowedMessage(label: string, origin: AllowOrigin): string | nul
 export type AllowOutcome = 'allowed' | 'already-allowed' | 'not-sent' | 'refused' | 'read-false' | 'unknown';
 
 /** The window the flows talk through. */
-export interface MotionUi extends ConfirmUi {
+export interface MotionUi extends GuardUi {
   info(message: string): void;
   /** A warning with buttons; the button chosen, or undefined. Not waited for. */
   ask(message: string, buttons: string[]): PromiseLike<string | undefined>;
@@ -510,20 +510,28 @@ export async function runAllow(target: MotionRobot, origin: AllowOrigin, ctx: Al
   });
   if (!confirmation) { return 'not-sent'; }
   const request = declarationRequest(confirmation, rapidLiveLines(ctx.remote, MOTION_CONTROL_SWITCH.withdrawOnSwitch));
-  if (!await confirmWrite(ui, ctx.robot, request)) { return 'not-sent'; }
-  if (!ctx.isActive()) {
-    ui.warn(`${name} is no longer the active robot. Allow Motion Control was not sent.`);
-    return 'not-sent';
-  }
 
-  // 7: the one call that allows it.
+  // 7: the one call that allows it, behind the confirmation; it goes out only
+  // while the robot is still the active one.
   let answered = true;
+  let went: 'sent' | 'inactive';
   try {
-    await m.setAllowMotionControl(true);
+    const out = await sendConfirmed(ui, ctx.robot, request, async () => {
+      if (!ctx.isActive()) { return 'inactive' as const; }
+      await m.setAllowMotionControl(true);
+      return 'sent' as const;
+    });
+    if (!out.sent) { return 'not-sent'; }
+    went = out.value;
   } catch (e) {
     if (!mayHaveBeenTaken(e)) { ui.refused(ALLOW_LABEL, e); return 'refused'; }
     answered = false;
+    went = 'sent';
     ctx.log(`Allow Motion Control on ${name}: no answer (${e instanceof Error ? e.message : String(e)}); reading it back`);
+  }
+  if (went === 'inactive') {
+    ui.warn(`${name} is no longer the active robot. Allow Motion Control was not sent.`);
+    return 'not-sent';
   }
   // It is allowed, or may be: the indicators and the withdrawals count it from here,
   // and the next jog asks again, whatever the read back says.
@@ -606,7 +614,8 @@ async function sendWithdrawal(target: MotionRobot, ctx: WithdrawContext): Promis
     });
   };
   try {
-    await m.setAllowMotionControl(false);
+    // A reducing write, exempt from the mode: it only gives up what RAPID Live holds.
+    await sendReducing(ui, ctx.robot, { label: 'Withdraw Motion Control', exemptFromWatchOnly: true }, () => m.setAllowMotionControl(false));
   } catch (e) {
     ui.refused('Withdraw Motion Control', e);
     notTaken();

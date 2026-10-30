@@ -584,7 +584,8 @@ describe('the save paths in extension.ts', () => {
     // Connect saves a port through saveConnectedPort (connectOnce, run by the Connect command).
     const savePort = src.slice(src.indexOf('const saveConnectedPort = async'), src.indexOf('const connectOnce = async'));
     assert.match(savePort, /changeSavedRobots\(\{ kind: 'patch', id, fields: \{ port: now\.port, useHttps: now\.useHttps \} \}, \{\s*inMemory: \{\s*apply: \(\) => undefined,\s*undo: \(\) => multi\.updateConfig\(id, \{ port: saved\.port, useHttps: saved\.useHttps \}\),/);
-    assert.match(src.slice(src.indexOf('const connectOnce = async')), /if \(outcome\.kind === 'save'\) \{ await saveConnectedPort\(id, name, saved, outcome\); \}/);
+    // A port the scan found with no system id to confirm the controller asks first (tracker 573); any other save goes straight through.
+    assert.match(src.slice(src.indexOf('const connectOnce = async')), /if \(outcome\.kind === 'save'\) \{\s*if \(outcome\.verifyLater && last\) \{[\s\S]*?=== q\.button\) \{ await saveConnectedPort\(id, name, saved, outcome\); \}[\s\S]*?\} else \{ await saveConnectedPort\(id, name, saved, outcome\); \}\s*\}/);
     assert.match(handler('abbRobot.connectRobot'), /connectOnce\(targetId\)/);
     const configure = handler('abbRobot.configure');
     assert.match(configure, /changeSavedRobots\(\s*\{ kind: 'patch', id, fields: \{ host: host\.trim\(\), username: username\.trim\(\) \}, dropPassword: true \}/);

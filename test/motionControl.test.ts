@@ -78,6 +78,8 @@ function fakeUi(answers: { modal?: (message: string, detail: string, buttons: st
     modal: async (message, detail, buttons) => { shown.push({ kind: 'modal', message, detail, buttons }); return answers.modal?.(message, detail, buttons); },
     input: async (title, prompt, placeHolder) => { shown.push({ kind: 'input', title, prompt, placeHolder }); return answers.input?.(title, prompt); },
     warn: message => { shown.push({ kind: 'warn', message }); },
+    log: () => { /* the wrappers' trace line; not under test here */ },
+    refuse: () => undefined,
     info: message => { shown.push({ kind: 'info', message }); },
     ask: async (message, buttons) => { shown.push({ kind: 'ask', message, buttons }); return answers.ask?.(message, buttons); },
     refused: (label, e) => { shown.push({ kind: 'refused', label, error: (e as Error).message }); },
@@ -706,7 +708,7 @@ describe('the notices of the client\'s withdrawals', () => {
 });
 
 describe('the line and the button of a RobotWare 8 start or jog confirmation', () => {
-  const request = { label: 'Run M.r', tier: 'motion' as const, sideEffects: ['Starts RAPID there; the robot moves as the routine says.'] };
+  const request = { label: 'Run M.r', tier: 'motion' as const, taskApplies: false, sideEffects: ['Starts RAPID there; the robot moves as the routine says.'] };
 
   it('the line per state', () => {
     const r = (allowed: boolean | null, since: string | null = null) => ({ allowed, since, registered: true });

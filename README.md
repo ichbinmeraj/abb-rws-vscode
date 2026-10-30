@@ -128,7 +128,10 @@ The package ships with the full `RobotManager` lifecycle, `MultiRobotManager` or
 - It does not use the key switch of a real controller.
 - It allows RobotWare 8 motion control only when you run Allow Motion Control (RobotWare 8), or choose Allow Motion Control first… in a start or jog confirmation, and confirm by typing the robot's name that an emergency stop and a normal stop are within your reach. It withdraws it when you disconnect or choose Withdraw Motion Control, and tries to when you close the window. ABB's PC SDK has an automatic setting for this, and ABB allows it on virtual controllers and not on real ones. On a real controller the tool has to turn it on itself, and ABB asks it to confirm both stops first. RAPID Live asks you every time, on a virtual controller and on a real one.
 - It gives no emergency stop and no normal stop. Stop RAPID is a program stop sent over the network; the stops are at the FlexPendant.
+- It sends no write to a robot in Watch only, and requests no mastership, write access or RMMP for one. See [Watch only and Program and operate](#watch-only-and-program-and-operate).
+- It does not send a module file with non-ASCII characters to a controller: the controller reads the file as single-byte text and would store a UTF-8 character wrong. The message names the line, the column and the byte. A file with a control character, such as a UTF-16 file saved without a byte order mark, is refused the same way.
 - A jog in AUTO is sent like any other and the controller decides; its answer is shown.
+- A jog goes to the mechanical unit the confirmation names. When the controller has another unit selected for jogging, the client selects that one first, and the selection stays on the FlexPendant. The controller jogs the unit in the jog mode set for it there. The Joint or Cartesian setting of the Motion view only chooses the axis labels.
 - It has no jog stop button: one click is one jog step, so no jog is left running. Stop robot motion at the FlexPendant or with the emergency stop.
 - It collects no telemetry. It sends nothing about you or your use to anyone. It talks to the controllers you connect to and, when you scan, to the addresses listed under [Finding controllers](#finding-controllers).
 
@@ -164,6 +167,7 @@ virtual controller first.
 - RobotWare 7 and 8: a switch to Auto waits (`AUTO_CH`) until it is confirmed at the FlexPendant; RAPID Live does not send that confirmation, by design. A RobotWare 8.2.1 virtual controller also took Switch Operation Mode in a guard stop, in both directions. RWS 1.0 (RobotWare 6) has no operating-mode change.
 - RobotWare 7, seen once on 7.21.4: a module named like one of its own global symbols, ignoring case, breaks ABB's rule that names are unique. The controller loads it with errors under a new name (`<NAME>#2`). The error of Load Program from File or Push Current File to Controller then names the module by that name. Unload Module by the original name is refused (403, -1073414145: the reason is written in the event log); the error then shows the newest event-log message, which may be about something else. Unload the module by the listed name. Neither error has been shown from a controller yet. Not tried on RobotWare 6 or 8. Name modules so they do not clash.
 - RobotWare 8: an 8.2.1 virtual controller sometimes left the speed ratio out of the client's live updates while answering that it took them, so a speed ratio changed elsewhere showed only at the next slow poll; the cause is not known. The client now asks once more, with the resource in its other spelling, and if it is still left out polls everything at the full rate. In a test run on 2026-10-22 that virtual controller left the speed ratio out of all 24 subscription requests that named `/rw/panel/speedratio;speedratio`, and took it in each one that named `/rw/panel/speedratio`; the full-rate polling, for a speed ratio left out in both spellings, has not run against a controller.
+- Module files with non-ASCII text: a controller reads a module file as single-byte text. On 6.16.03, 7.21.4 and 8.2.1 virtual controllers (2026-10-30) a UTF-8 file with an a-umlaut loaded with no error, the program text held mojibake, and RobotWare 7 and 8 saved it back double-encoded, so a push followed by a pull would corrupt the character and each further round trip would encode it once more. A windows-1252 file was read correctly on all three, and text written through RWS was stored correctly. A UTF-8 byte order mark loaded with a syntax-error event, and on RobotWare 7 and 8 the module came up named after the mark's first byte. RAPID Live therefore refuses any byte above 0x7F before sending, a byte order mark included. A later release may convert text to the controller's encoding and read it back by generation.
 - RobotWare 6: Export Event Log writes the whole domain, newest first, up to 20 pages of 50 messages (about 1000), where earlier releases wrote the newest 50 only. The client follows the listing's next link page by page, so one export sends one request per page, and a later page that fails ends the export with the messages read so far. On a 6.16.03 virtual controller the client's page walk read the whole domain, 312 messages over seven pages.
 
 ### RWS 1.0 (IRC5, RobotWare 6)
@@ -225,46 +229,53 @@ Built on Node.js APIs only. Tested on Windows against RobotStudio virtual contro
 
 ## Before the robot moves
 
-The commands below ask first, and the dialog names the robot as `name (host:port)`, plus the
-name the controller reports for itself when that differs. For a connected robot the address
-is the one its session is on, even when its saved address changed since (in another window,
-say). What it asks depends on what the write does:
+Every command that writes to a controller asks before it sends. The dialog names the robot
+as `name (host:port)`, plus the name the controller reports for itself when that differs,
+and the task when the write goes to one: the title reads `Push Current File in T_ROB2 on
+Cell1 (192.168.125.1:443)`. A write that acts on the whole execution, such as Start RAPID
+or PP to Main, lists every task it runs. For a connected robot the address is the one its
+session is on, even when its saved address changed since (in another window, say). What it
+asks depends on what the write does:
 
 - **A command that can move the robot** - Start RAPID, Run Routine from the editor, Motors
   On, answering a UI instruction, the first jog on a connection (and the next one after the
-  jog increment is raised above the confirmed value) - shows what it does and then asks you
+  jog increment is raised above the confirmed value, the unit changes or the axis labels
+  change) - shows what it does and then asks you
   to **type the robot's name** in a box, exactly as it is saved in the Robots view (spaces
   around it are ignored). A name that does not match sends nothing and says so. Apart from
   the jog this is asked every time, and there is no setting that turns it off.
-- **A command that is hard to undo, or one only a virtual controller takes** - Lock / Unlock
-  Operation Mode, Switch Operation Mode, Load .cfg File, Remove CFG Instance, Create New
-  RAPID Task, Restart Controller, Restore Backup, Clear Event Log and Clear ALL Event Log
-  Domains, Delete file or folder; the simulation commands (Simulate E-Stop, Reset Simulated
-  E-Stop, Simulate General Stop, Simulate Auto Stop, Simulate Enable Switch, Teleport Robot
-  to Joints) and the speed actions of Show / Control Virtual Time; Set Speed Ratio when it
-  raises the ratio while RAPID runs - lists what it does behind one button,
+- **A command that is hard to undo, or one only a virtual controller takes** - Load Program
+  from File, Push Current File, Unload Module, Reset RAPID, PP to Main, Set PP from the
+  editor when the file must be loaded first, Restore Module from Restore Point, Activate /
+  Deactivate Task (one or all), Create CFG Instance, Lock / Unlock Operation Mode, Switch
+  Operation Mode, Load .cfg File, Remove CFG Instance, Create New RAPID Task, Restart
+  Controller, Restore Backup, Clear Event Log and Clear ALL Event Log Domains, Delete file or
+  folder, Remove DIPC Queue and Set Controller Clock, the simulation commands (Simulate E-Stop,
+  Reset Simulated E-Stop, Simulate General Stop, Simulate Auto Stop, Simulate Enable Switch,
+  Teleport Robot to Joints), the speed actions of Show / Control Virtual Time, and Set Speed
+  Ratio when it raises the ratio while RAPID runs, or when the current ratio is not read yet
+  while RAPID runs - lists what it does behind one button,
   **Continue on <name>**.
 - **A value write** - Write Signal, Toggle Signal (also the one-click toggle in the I/O
-  panel), saving a CFG instance with Ctrl+S, Edit Watched Value, Set Speed Ratio in every
-  other case; and, only while RAPID runs, Set PP to Routine, Unload Module and the pointer
-  move of Call Service Routine - is one button, **Write to <name>**.
+  panel), saving a CFG instance with Ctrl+S, Edit Watched Value, Write RAPID Variable, Set
+  Execution Cycle, Set Speed Ratio in every other case, Set PP to Routine, the pointer move
+  of Call Service Routine, Set PP from the editor when the module is loaded, Create Backup,
+  Create Directory, Rename, Compress, Save Domain to .cfg, Create DIPC Queue, Send DIPC
+  Message, Read DIPC Message (it takes the message off the queue), Set Active Tool / Work
+  Object and Request Remote Control - is one button, **Write to <name>**.
 
 - **Allow Motion Control (RobotWare 8)** - shows ABB's condition (an emergency stop and a
   normal stop within your reach), then **Both stops are within my reach**, then asks you to
   **type the robot's name**. Withdraw Motion Control never asks: it only removes the permission and is not a stop.
 
-A cancelled dialog sends nothing. Stop RAPID and Motors Off never ask. These
-writes send at once and show their result: PP to Main, Set PP from the editor (CodeLens),
-Set Execution Cycle, Load Program from File, Push Current File, Write RAPID Variable, Set PP
-to Routine, Unload Module and Call Service Routine while RAPID is stopped, Create Backup,
-Create Directory, Rename, Compress, Create CFG Instance, Save Domain to .cfg, the DIPC
-commands, Activate / Deactivate Task (one or all), Set Active Tool / Work Object and Set
-Controller Clock. Open Loaded Module Source, Pull All Modules and Diff Current File with
-Controller write the module to a temporary file on the controller and delete it afterwards,
-without asking about that file. Pull All Modules does ask first, in a modal, before it
-overwrites local files of the same name in the destination folder (**Pull**). When the
-controller refuses a load, an unload or a pointer move because the program runs, the
-extension asks whether to stop it first (**Stop Program and Continue**).
+A cancelled dialog sends nothing. Stop RAPID and Motors Off never ask: they send at once and
+show their result, as do Withdraw Motion Control and the release of this tool's own locks.
+Open Loaded Module Source, Pull All Modules and Diff Current File with Controller write the
+module to a temporary file on the controller and delete it afterwards, without asking about
+that file. Pull All Modules does ask first, in a modal, before it overwrites local files of
+the same name in the destination folder (**Pull**). When the controller refuses a load, an
+unload or a pointer move because the program runs, the extension asks whether to stop it
+first (**Stop Program and Continue**).
 
 Every command that acts on one RAPID task takes the same task. That is the task the file
 was pulled from, else the one task that has the module loaded, else the one active task.
@@ -274,6 +285,75 @@ Program from File and Push Current File leave the program pointer where it is. F
 with `PROC main` their message offers **PP to Main…**, which lists the tasks it moves behind
 one button, **Continue on <name>**. On a multi-task system that is every task the
 execution runs, the other tasks as well as the one the file went to.
+
+### Watch only and Program and operate
+
+RAPID Live treats each robot in one of two ways. In **Program and operate** every write is
+sent after the dialog above. In **Watch only** RAPID Live reads from the controller and sends
+no writes: a command that would write stops with a message that names the robot, and no
+mastership, write access or RMMP is requested. The mode comes from what the controller
+reports itself as. A virtual controller starts in Program and operate. A real controller, or
+one that does not say what it is, starts in Watch only. A robot saved before 1.5.0 that
+answers as a real controller is asked once, when it connects, with no answer preselected.
+Closing that question leaves it in Watch only.
+
+**Set Robot Mode** switches one robot, from the command palette, the robot's row in the
+Robots view, the status bar item that shows the mode, or the button on a refusal. Switching
+to Watch only withdraws the RobotWare 8 motion control and releases the locks RAPID Live
+holds on that robot, and says so. The choice is kept per robot on this PC, bound to the
+controller's kind and address, so a robot entry pointed at another controller asks again.
+Stop RAPID and Motors Off are refused in Watch only too, so a click on the status bar cannot
+stop a cell you chose to watch. Pull All Modules, Diff Current File with Controller and Open
+Loaded Module Source still save a temporary copy to the controller's TEMP volume and delete
+it. They change no program, configuration or state.
+
+### Before a module is replaced
+
+Push Current File and Load Program from File, and the loads of Set PP and Run this routine
+from the editor, protect the controller's copy:
+
+- An editor with unsaved changes to the file is saved first, so the file loaded is the one
+  you see. A save that does not go through stops the command.
+- The file is read as bytes. An empty file, and a file with a byte order mark or any
+  non-ASCII character, is refused before anything is sent. The message names the line, the
+  column and the byte, with a **Go to line** button. A controller reads a module file as
+  single-byte text, so a UTF-8 character is stored wrong, RobotWare 7 and 8 save it back
+  double-encoded, and a byte order mark becomes part of the module name there (checked on
+  6.16.03, 7.21.4 and 8.2.1 virtual controllers on 2026-10-30, see Known limits). Replace the
+  character and push again.
+- The file name must be the declared module name, exactly: `Main_T2.mod` declares
+  `MODULE Main_T2`. The controller loads a file under its file name and unloads a loaded
+  module of that name first, so a file named for another module is refused, and the message
+  says which name to change.
+- RAPID Live reads the module from the task itself, not from its last poll. When it is there,
+  the controller's copy is compared with the base recorded when you pulled the file (line
+  endings aside). If the copy changed on the controller, nothing is sent and a message says
+  so, with **Show diff** and **Push anyway…**. When RAPID Live has no record of pulling that
+  file, it stops the same way once. After a push or a pull the controller's copy is recorded
+  as the base. A controller copy equal to your file is nothing to push. Once you confirm, the
+  copy is read once more: a change made while the dialog was open stops the push. The base
+  and the check are both the program text as the controller holds it, with each PERS at its
+  declared value, so a PERS that changes while the program runs does not count as a change.
+  The file you pull carries the current values, as a module save does.
+- Once you confirm, and before the load is sent, the controller's copy is saved as a restore
+  point under the extension's global storage folder, outside your workspace (a cancelled or
+  refused push leaves none):
+  `restore-points/<robot>/<task>/<time>/<Module>.mod` next to a `restore.json`. The
+  newest 20 per module are kept, and at most 100 MB in all.
+- A load the controller takes without loading the module named counts as failed too, and so
+  does one that lists it under a numbered name beside a module that stayed. A RobotWare 6.16
+  controller loaded a file with no MODULE line under another name, and RobotWare 7 lists a
+  name clash as the name with #2. After a restore the module is read back the same way.
+- A .prg file is refused: it is a program, not a module. Load a program from RobotStudio or
+  the FlexPendant.
+- If the load fails, RAPID Live reads the module again and tells the cases apart. Still
+  there as it was: nothing was lost. Gone: it offers **Reload the saved copy…** as a
+  separate confirmed write. There but changed: the offer says the reload replaces what is
+  loaded now, and saves that copy first. Not readable: the saved copy is named and nothing is
+  offered. One message reports both steps. **Restore Module from Restore Point…** lists the
+  saved copies of the active robot and runs the same confirmed write. The module loaded under
+  that name at the time is saved as a restore point of its own first. A saved copy with
+  non-ASCII characters is kept but not offered back.
 
 The confirmation is the extension's, in front of the controller's own checks: the
 controller still decides every write (mastership or write access, the operating mode, the
@@ -333,7 +413,7 @@ By default RAPID Live does not check the controller's TLS certificate, because O
 ## Development
 
 The extension bundles the client from a tarball that is not tracked in git:
-`package.json` pins `file:vendor/abb-rws-client-1.5.1.tgz`, and `package-lock.json`
+`package.json` pins `file:vendor/abb-rws-client-1.5.3.tgz`, and `package-lock.json`
 holds that tarball's sha512. Build it from the client at the matching tag:
 
 1. Clone the client beside this repo, at the tag matching the pin (the tag exists
@@ -341,11 +421,11 @@ holds that tarball's sha512. Build it from the client at the matching tag:
    that carries that version):
 
    ```
-   git clone --branch v1.5.1 https://github.com/ichbinmeraj/abb-rws-client.git ../abb-rws-client
+   git clone --branch v1.5.3 https://github.com/ichbinmeraj/abb-rws-client.git ../abb-rws-client
    ```
 
 2. `npm run vendor`: makes `vendor/`, installs the client's dependencies if it has
-   none, and packs it into `vendor/abb-rws-client-1.5.1.tgz` (the client's own build
+   none, and packs it into `vendor/abb-rws-client-1.5.3.tgz` (the client's own build
    and tests run first, a minute or two). It refuses a client whose version the pin
    does not name.
 3. `npm ci`

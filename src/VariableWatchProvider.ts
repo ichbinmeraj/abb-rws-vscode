@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
 import type { MultiRobotManager } from 'abb-rws-client';
 import { Logger } from './Logger';
-import type { ConfirmRequest } from './confirm';
+import { sendConfirmed, type ConfirmRobot, type GuardUi } from './confirm';
 
 type RobotEntry = MultiRobotManager['entries'][number];
 
-/** What the extension hands the provider: the write confirmation and the error dialog, both bound to a robot entry, and the task rule. */
+/** What the extension hands the provider: the send guard (its window and how a robot is named), the error dialog bound to a robot entry, and the task rule. */
 export interface WatchHooks {
-  confirm(entry: RobotEntry, request: ConfirmRequest): Promise<boolean>;
+  guard: { uiFor(entry: RobotEntry): GuardUi; robotOf(entry: RobotEntry): ConfirmRobot };
   showError(label: string, e: unknown, entry?: RobotEntry): void;
   /** The task a module's variable is in, on the active robot (src/taskResolver.ts); undefined = add nothing. */
   taskFor(module: string): Promise<string | undefined>;
@@ -193,13 +193,12 @@ export class VariableWatchProvider implements vscode.TreeDataProvider<WatchItem>
       placeHolder: 'RAPID literal - number, "string", [array], or [record]',
     });
     if (newValue === undefined) { return; }
-    const ok = await this.hooks.confirm(target, {
-      label: `Write ${row.module}.${row.symbol} in ${row.task}`, tier: 'change',
-      sideEffects: [`Sets ${row.task}/${row.module}/${row.symbol} to ${newValue}${row.value !== undefined ? ` (now ${row.value})` : ''}. A running program sees the new value at once.`],
-    });
-    if (!ok) { return; }
     try {
-      await target.manager.setRapidVariable(row.task, row.module, row.symbol, newValue);
+      const out = await sendConfirmed(this.hooks.guard.uiFor(target), this.hooks.guard.robotOf(target), {
+        label: `Write ${row.module}.${row.symbol}`, tier: 'change', taskApplies: true, task: row.task,
+        sideEffects: [`Sets ${row.task}/${row.module}/${row.symbol} to ${newValue}${row.value !== undefined ? ` (now ${row.value})` : ''}. A running program sees the new value at once.`],
+      }, () => target.manager.setRapidVariable(row.task, row.module, row.symbol, newValue));
+      if (!out.sent) { return; }
       row.value = newValue;
       row.error = undefined;
       row.lastUpdated = Date.now();

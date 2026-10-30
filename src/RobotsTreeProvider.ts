@@ -9,6 +9,8 @@ class RobotItem extends vscode.TreeItem {
     manager: RobotManager,
     isActive: boolean,
     allowedHere: boolean,
+    /** The robot's mode (src/watchMode.ts), while connected. */
+    mode: { description: string; tooltip: string } | undefined,
   ) {
     super(config.name, vscode.TreeItemCollapsibleState.None);
 
@@ -21,11 +23,12 @@ class RobotItem extends vscode.TreeItem {
       const motor = s.ctrlstate === 'motoron' ? '⚡' : '○';
       // RobotWare 8: motion control allowed, or not known after RAPID Live allowed it; nothing on 6 or 7.
       const motion = robotsViewMotion(motionReading(s), allowedHere);
-      this.description = [rwMajor, s.opmode, `RAPID: ${s.execstate}`, motion.description].filter(Boolean).join('  ');
+      this.description = [rwMajor, s.opmode, `RAPID: ${s.execstate}`, mode?.description, motion.description].filter(Boolean).join('  ');
       this.tooltip     = new vscode.MarkdownString(
         `**${config.name}** ${motor}\n\n` +
         `Host: \`${config.host}\`\n\nRobotWare: ${rw}\n\n` +
         `Controller: ${s.ctrlstate}  |  Mode: ${s.opmode}  |  RAPID: ${s.execstate}` +
+        (mode ? `\n\n${mode.tooltip}` : '') +
         (motion.tooltip ? `\n\n${motion.tooltip}` : '')
       );
       this.iconPath    = new vscode.ThemeIcon(
@@ -66,14 +69,18 @@ export class RobotsTreeProvider implements vscode.TreeDataProvider<RobotsTreeIte
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   /** `allowedHere`: whether RAPID Live allowed RobotWare 8 motion control on the robot during its connection. */
-  constructor(private readonly multi: MultiRobotManager, private readonly allowedHere: (id: string) => boolean = () => false) {}
+  constructor(
+    private readonly multi: MultiRobotManager,
+    private readonly allowedHere: (id: string) => boolean = () => false,
+    private readonly modeOf: (id: string) => { description: string; tooltip: string } | undefined = () => undefined,
+  ) {}
 
   refresh() { this._onDidChangeTreeData.fire(); }
   getTreeItem(el: RobotsTreeItem) { return el; }
 
   getChildren(): RobotsTreeItem[] {
     const items: RobotsTreeItem[] = this.multi.entries.map(({ id, config, manager }) =>
-      new RobotItem(id, config, manager, id === this.multi.activeId, this.allowedHere(id))
+      new RobotItem(id, config, manager, id === this.multi.activeId, this.allowedHere(id), this.modeOf(id))
     );
     items.push(new AddRobotItem());
     return items;

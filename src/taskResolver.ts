@@ -35,6 +35,10 @@ export interface FileOrigin {
   robotId?: string;
   /** When it was recorded, ISO 8601. */
   at?: string;
+  /** sha256 of the controller's copy, LF-normalised (src/pushGuard.ts), read right after the pull or the push: the base a later push compares against. */
+  ctrlHash?: string;
+  /** The controller's change count of that copy, when it was read with getModuleText. */
+  ctrlChangeCount?: number;
 }
 
 export interface TaskQuery {

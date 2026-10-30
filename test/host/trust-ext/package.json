@@ -1,0 +1,15 @@
+{
+  "name": "rapid-live-trust-check",
+  "displayName": "RAPID Live trust check (test probe)",
+  "publisher": "merajsafari",
+  "version": "0.0.1",
+  "private": true,
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "activationEvents": ["*"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": true },
+    "virtualWorkspaces": true
+  },
+  "contributes": {}
+}

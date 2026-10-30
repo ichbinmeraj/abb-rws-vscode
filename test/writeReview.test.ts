@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
-  isRapidRunning, jogNeedsAsk, opModeRequest, speedRatioRequest, virtualOnlyRequest, whileRunningRequest,
+  isRapidRunning, jogNeedsAsk, opModeRequest, programChangeRequest, speedRatioRequest, virtualOnlyRequest,
 } from '../src/confirm';
 import { duplicateRobotNames, entryForArg, extractRobotId } from '../src/robotArg';
 
@@ -64,10 +64,10 @@ describe('follow-up actions stay on the robot that asked', () => {
     }
   });
 
-  it('Create RAPID Task asks through confirm, disruptive, and has no dialog of its own', () => {
+  it('Create RAPID Task asks through the send wrapper, disruptive, and has no dialog of its own', () => {
     const body = handler('abbRobot.createRapidTask');
     assert.doesNotMatch(body, /showWarningMessage\(\s*`Create task/);
-    assert.match(body, /await confirm\(entry, \{\s*label: `Create RAPID task/);
+    assert.match(body, /await sendTo\(entry, \{\s*label: `Create RAPID task/);
     assert.match(body, /tier: 'disruptive'/);
     assert.doesNotMatch(body, /const confirm = /);
   });
@@ -78,6 +78,15 @@ describe('confirmations for the writes that had none', () => {
     assert.equal(speedRatioRequest(50, 80, false).tier, 'change');
     assert.equal(speedRatioRequest(50, 30, true).tier, 'change');
     assert.equal(speedRatioRequest(50, 50, true).tier, 'change');
+    // Unread (review finding 12): no number is made up, and while RAPID runs any value may be a speed-up.
+    const unread = speedRatioRequest(null, 100, true);
+    assert.equal(unread.tier, 'disruptive');
+    assert.deepEqual(unread.sideEffects, ['Changes the speed ratio from an unread value to 100 %.', 'RAPID is running and the current ratio is not read: a motion in progress may go faster.']);
+    const unreadStopped = speedRatioRequest(null, 10, false);
+    assert.equal(unreadStopped.tier, 'change');
+    assert.deepEqual(unreadStopped.sideEffects, ['Changes the speed ratio from an unread value to 10 %.']);
+    assert.match(handler('abbRobot.setSpeedRatio'), /const current = entry\.manager\.state\.speedRatio;/);
+    assert.doesNotMatch(handler('abbRobot.setSpeedRatio'), /\?\? 100/);
     const raise = speedRatioRequest(50, 80, true);
     assert.equal(raise.tier, 'disruptive');
     assert.match(raise.sideEffects.join(' '), /goes faster/);
@@ -105,29 +114,37 @@ describe('confirmations for the writes that had none', () => {
     }
   });
 
-  it('a pointer move or an unload asks only while RAPID runs, as a change', () => {
-    assert.equal(whileRunningRequest('Unload module', false, ['x']), undefined);
-    const r = whileRunningRequest('Unload module', true, ['Unloads Foo from T_ROB1.']);
-    assert.equal(r?.tier, 'change');
-    assert.equal(r?.sideEffects[0], 'RAPID is running.');
+  it('a pointer move always asks as a change and an unload as disruptive, each naming the task and saying first when RAPID runs', () => {
+    const r = programChangeRequest('Unload module', true, 'disruptive', ['Unloads Foo from T_ROB1.'], 'T_ROB1');
+    assert.equal(r.tier, 'disruptive');
+    assert.equal(r.sideEffects[0], 'RAPID is running.');
+    assert.equal(programChangeRequest('Unload module', false, 'disruptive', ['x'], 'T_ROB1').sideEffects[0], 'x');
     assert.equal(isRapidRunning('running'), true);
     assert.equal(isRapidRunning('stopped'), false);
     assert.equal(isRapidRunning(null), false);
-    for (const id of ['abbRobot.setPPToRoutine', 'abbRobot.unloadModule', 'abbRobot.callServiceRoutine']) {
-      assert.match(handler(id), /whileRunningRequest\(/, id);
+    for (const id of ['abbRobot.setPPToRoutine', 'abbRobot.callServiceRoutine']) {
+      assert.match(handler(id), /sendTo\(entry,\s*programChangeRequest\('Set PP to (service )?routine', isRapidRunning\([^)]*\), 'change', /, id);
     }
+    assert.match(handler('abbRobot.unloadModule'), /sendTo\(entry,\s*programChangeRequest\('Unload module', isRapidRunning\([^)]*\), 'disruptive', /);
+    assert.doesNotMatch(src, /whileRunningRequest/);
   });
 });
 
 describe('smaller review fixes', () => {
-  it('the jog confirmation is asked again when the axis value is raised', () => {
-    assert.equal(jogNeedsAsk(undefined, 1), true);
-    assert.equal(jogNeedsAsk(1, 1), false);
-    assert.equal(jogNeedsAsk(5, 1), false);
-    assert.equal(jogNeedsAsk(1, 5), true);
+  it('the jog confirmation is asked again when the axis value is raised, the unit changes or the labels change; the unit is sent (review finding 11)', () => {
+    const j = (value: number, unit = 'ROB_1', labels = 'Joint') => ({ value, unit, labels });
+    assert.equal(jogNeedsAsk(undefined, j(1)), true);
+    assert.equal(jogNeedsAsk(j(1), j(1)), false);
+    assert.equal(jogNeedsAsk(j(5), j(1)), false);
+    assert.equal(jogNeedsAsk(j(1), j(5)), true);
+    assert.equal(jogNeedsAsk(j(1), j(1, 'ROB_2')), true);
+    assert.equal(jogNeedsAsk(j(1), j(1, 'rob_1')), false, 'unit names compare without case');
+    assert.equal(jogNeedsAsk(j(1), j(1, 'ROB_1', 'Cartesian')), true);
     const jog = handler('abbRobot.jog');
-    assert.match(jog, /jogNeedsAsk\(jogConfirmed\.get\(entry\.id\), inc\)/);
-    assert.match(jog, /jogConfirmed\.set\(entry\.id, inc\)/);
+    assert.match(jog, /const mechunit = await mechunitFor\(entry, 'Jog'\);\s*if \(!mechunit\) \{ return; \}/);
+    assert.match(jog, /const now: JogConfirmed = \{ value: inc, unit: mechunit, labels: mode \};\s*const ask = jogNeedsAsk\(jogConfirmed\.get\(entry\.id\), now\)/);
+    assert.match(jog, /entry\.manager\.jog\(\{ mode, axes, speed, mechunit \}\)/);
+    assert.match(jog, /jogConfirmed\.set\(entry\.id, now\)/);
   });
 
   it('a signal search that returns after a robot switch is not pinned under the new robot', () => {
@@ -146,10 +163,13 @@ describe('smaller review fixes', () => {
     assert.equal((provider.match(/arguments: \[moduleName, name, kind, document\.fileName\]/g) ?? []).length, 2);
   });
 
-  it('the stop offer and the main-collision prompt name the robot', () => {
+  it('the stop offer names the robot; the main-collision unload is a disruptive ask naming the task and both modules (the dialog names the robot)', () => {
     assert.match(src, /async function withStopOffer<T>\(what: string, fn: \(stopIfRunning: boolean\) => Promise<T>, entry: RobotEntry\)/);
     assert.ok(src.includes('`${what} on ${robotLabel(confirmRobotOf(entry))}: the RAPID program is running. Stop the program first?`'));
-    assert.ok(src.includes('`On ${robotLabel(confirmRobotOf(entry))}: two modules each define PROC main()'));
+    const collision = src.slice(src.indexOf('async function tryResolveMainCollision('), src.indexOf('async function wrap('));
+    assert.match(collision, /sendTo\(entry, \{\s*label: `Unload \$\{mod\}`, tier: 'disruptive', taskApplies: true, task: taskName,/);
+    assert.ok(collision.includes('`Two modules in ${taskName} declare PROC main(): ${currentModule} and ${mod}. RAPID needs exactly one, so the controller refused the pointer move.`'));
+    assert.doesNotMatch(collision, /showWarningMessage\(/);
   });
 
   it('two saved robots with one name are reported, without case or surrounding spaces', () => {

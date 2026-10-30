@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import type { MultiRobotManager, RobotManager } from 'abb-rws-client';
 import { quietTask } from './taskResolver';
+import { Logger } from './Logger';
+import { isWebviewCommand } from './webviewCommands';
 
 /**
  * The Program panel - tabbed webview with two tabs: Modules and Watch.
@@ -125,11 +127,18 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
     view.webview.html = this.renderHtml(view.webview);
     view.onDidDispose(() => { this.view = undefined; });
 
-    view.webview.onDidReceiveMessage((msg: { type: string; name?: string; args?: unknown[]; task?: string; module?: string }) => {
-      if (msg.type === 'command' && typeof msg.name === 'string') {
-        // Dispatch through VS Code's command system. Every existing command
-        // (push, open, run, set PP, edit watch, …) works here unchanged.
-        void vscode.commands.executeCommand(msg.name, ...(msg.args ?? []));
+    view.webview.onDidReceiveMessage((msg: { type: string; name?: unknown; args?: unknown; task?: string; module?: string }) => {
+      if (msg.type === 'command' && isWebviewCommand(msg.name, msg.args)) {
+        // Dispatch through VS Code's command system: the listed ids only
+        // (src/webviewCommands.ts), so the page can run the commands its
+        // buttons name and nothing else. Every write among them asks through
+        // the send wrappers, since the handler it reaches is the same.
+        const args: unknown[] = Array.isArray(msg.args) ? msg.args : [];
+        void vscode.commands.executeCommand(msg.name, ...args);
+        return;
+      }
+      if (msg.type === 'command') {
+        Logger.warn(`the Program view asked for a command it may not run: ${String(msg.name)}`);
         return;
       }
       if (msg.type === 'expandModule' && msg.task && msg.module) {
@@ -1039,8 +1048,9 @@ export class TabbedProgramWebviewProvider implements vscode.WebviewViewProvider 
           const act = btn.dataset.act;
           const mod = btn.dataset.mod;
           const name = btn.dataset.name;
-          if (act === 'run-routine')   cmd('abbRobot.runRoutineFromCodeLens', mod, name);
-          if (act === 'setpp-routine') cmd('abbRobot.setPPFromCodeLens',     mod, name);
+          // The row's own task, and no file: the handler acts in that task and never takes the editor's file for it.
+          if (act === 'run-routine')   cmd('abbRobot.runRoutineFromCodeLens', mod, name, 'proc', '', btn.dataset.task);
+          if (act === 'setpp-routine') cmd('abbRobot.setPPFromCodeLens',     mod, name, 'proc', '', btn.dataset.task);
         });
       });
     }

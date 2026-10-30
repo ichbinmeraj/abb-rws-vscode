@@ -45,6 +45,14 @@ describe('no first-task fallback outside the resolver', () => {
       assert.doesNotMatch(text, /['"`]T_ROB1['"`]/, `${f} names T_ROB1`);
     }
   });
+
+  it('no source file names ROB_1 as a default or takes the first mechanical unit (the rule is src/mechunitResolver.ts)', () => {
+    for (const f of files.filter(f => f !== 'mechunitResolver.ts')) {
+      const text = code(fs.readFileSync(path.join(srcDir, f), 'utf8'));
+      assert.doesNotMatch(text, /['"`]ROB_1['"`]/, `${f} names ROB_1`);
+      assert.doesNotMatch(text, /mechunits\s*\[\s*0\s*\]/, `${f} takes the first mechanical unit`);
+    }
+  });
 });
 
 describe('each task site goes through the resolver', () => {
@@ -72,7 +80,7 @@ describe('each task site goes through the resolver', () => {
     assert.match(ext, /taskFor: module => taskForModule\(activeEntry\(multi\), module, 'Add Variable to Watch'\)/);
     const watch = fs.readFileSync(path.join(srcDir, 'VariableWatchProvider.ts'), 'utf8');
     assert.match(watch, /const taskName = await this\.hooks\.taskFor\(moduleName\.trim\(\)\);\s*if \(!taskName\) \{ return; \}/);
-    assert.match(watch, /label: `Write \$\{row\.module\}\.\$\{row\.symbol\} in \$\{row\.task\}`/);
+    assert.match(watch, /label: `Write \$\{row\.module\}\.\$\{row\.symbol\}`, tier: 'change', taskApplies: true, task: row\.task,/);
     assert.match(watch, /setRapidVariable\(row\.task, row\.module, row\.symbol, newValue\)/);
   });
 
@@ -80,8 +88,9 @@ describe('each task site goes through the resolver', () => {
     assert.match(fn('taskForModule'), /return taskFor\(entry, purpose, \{ module: moduleName, recorded \}\);/);
     assert.match(fn('taskFor'), /resolveTask\(taskUi, robotLabel\(confirmRobotOf\(entry\)\), entry\.manager\.state, q, purpose\)/);
     const callers: Array<[string, RegExp]> = [
-      ['abbRobot.setPPFromCodeLens', /const taskName = await taskForModule\(entry, moduleName, 'Set PP', origins\.taskOf\(lensPath\)\);\s*if \(!taskName\) \{ return; \}/],
-      ['abbRobot.runRoutineFromCodeLens', /const taskName = await taskForModule\(entry, moduleName, 'Run routine', origins\.taskOf\(lensPath\)\);\s*if \(!taskName\) \{ return; \}/],
+      // The Program view's row passes its task: explicit, through the same resolver; a lens goes by the file.
+      ['abbRobot.setPPFromCodeLens', /const taskName = explicitTask \? await taskFor\(entry, 'Set PP', \{ explicit: explicitTask, module: moduleName \}\) : await taskForModule\(entry, moduleName, 'Set PP', origins\.taskOf\(lensPath\)\);\s*if \(!taskName\) \{ return; \}/],
+      ['abbRobot.runRoutineFromCodeLens', /const taskName = explicitTask \? await taskFor\(entry, 'Run routine', \{ explicit: explicitTask, module: moduleName \}\) : await taskForModule\(entry, moduleName, 'Run routine', origins\.taskOf\(lensPath\)\);\s*if \(!taskName\) \{ return; \}/],
       ['abbRobot.setPPToRoutine', /taskName = await taskForModule\(entry, moduleName, 'Set PP to Routine'\); \}\s*if \(!taskName\) \{ return; \}/],
       ['abbRobot.unloadModule', /taskName = await taskForModule\(entry, moduleName, 'Unload Module'\); \}\s*if \(!taskName\) \{ return; \}/],
       ['abbRobot.openModuleSource', /taskName = await taskForModule\(entry, moduleName, 'Open Loaded Module Source'\); \}\s*if \(!taskName\) \{ return; \}/],
@@ -104,38 +113,47 @@ describe('each task site goes through the resolver', () => {
 });
 
 describe('the program pointer after Push and Load', () => {
-  it('every loadProgram call leaves the program pointer where it is', () => {
+  it('every loadProgram call leaves the program pointer where it is: the deps\' load (Push, Load and Restore Module), the lens load and reload, the Run routine load and reload', () => {
     const calls = [...ext.matchAll(/\.loadProgram\(([^\n]*)/g)].map(m => m[1]);
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 5);
     for (const c of calls) { assert.match(c, /resetPP: false/, c); }
+  });
+
+  it('Push and Load go through the one load helper, which asks (disruptive, naming the task) and records the origin', () => {
+    assert.match(handler('abbRobot.pushCurrentFile'), /const pushed = await loadModuleFile\(entry, taskName, filePath, 'Push Current File', 'Pushing'\);/);
+    assert.match(handler('abbRobot.uploadModule'), /const loaded = await loadModuleFile\(entry, taskName, localPath, 'Load Program from File', 'Loading'\);/);
+    const helper = ext.slice(ext.indexOf('const pushDepsFor = ('), ext.indexOf('const watchProvider'));
+    assert.match(helper, /recordBase: \(module, text\) => recordWithBase\(entry, filePath, taskName, module, text\),/);
+    const flow = fs.readFileSync(path.join(srcDir, 'pushFlow.ts'), 'utf8');
+    assert.match(flow, /d\.send\(\{ label: d\.label, tier: 'disruptive', taskApplies: true, task: d\.taskName, sideEffects: loadBullets\(pre, d\.taskName\) \}, ops => loadInsideSend\(d, pre, ops\)\)/);
+    assert.match(flow, /await d\.recordBase\(pre\.moduleName, pre\.text\);\s*return 'done';/);
   });
 
   it('Push and Load never reach resetRapid but through the separate ask', () => {
     for (const id of ['abbRobot.pushCurrentFile', 'abbRobot.uploadModule', 'abbRobot.setPPFromCodeLens', 'abbRobot.runRoutineFromCodeLens']) {
       assert.doesNotMatch(handler(id), /resetRapid/, id);
     }
-    for (const id of ['abbRobot.pushCurrentFile', 'abbRobot.uploadModule']) {
-      assert.match(handler(id), /offerPPToMain\(entry, text \?\? '', /, id);
-    }
+    assert.match(handler('abbRobot.pushCurrentFile'), /offerPPToMain\(entry, pushed\.text \?\? '', /);
+    assert.match(handler('abbRobot.uploadModule'), /offerPPToMain\(entry, loaded\.text \?\? '', /);
     const offer = fn('offerPPToMain');
     assert.match(offer, /void afterLoad\(\{/);
-    assert.match(offer, /confirm: request => confirm\(entry, request\)/);
+    assert.match(offer, /moveToMain: async request => \{\s*const out = await sendTo\(entry, request, async \(\) => \{\s*try \{\s*await entry\.manager\.resetRapid\(\);/);
     assert.match(offer, /activeTasks\(entry\.manager\.state\)\);/);
   });
 
-  it('Pull All and a successful Push or Load record the task and text of the file', () => {
-    assert.match(handler('abbRobot.pullAllModules'), /await origins\.record\(filePath\.fsPath, taskName, source, entry\.id\);/);
-    assert.match(handler('abbRobot.pushCurrentFile'), /await origins\.record\(filePath, taskName, text, entry\.id\);/);
-    assert.match(handler('abbRobot.uploadModule'), /await origins\.record\(localPath, taskName, text, entry\.id\);/);
+  it('Pull All records the task and text of the file, with the controller copy as the base; Push and Load record it through the load helper', () => {
+    assert.match(handler('abbRobot.pullAllModules'), /await recordWithBase\(entry, filePath\.fsPath, taskName, name, source\);/);
+    assert.doesNotMatch(handler('abbRobot.pushCurrentFile'), /origins\.record\(/);
+    assert.doesNotMatch(handler('abbRobot.uploadModule'), /origins\.record\(/);
   });
 });
 
 describe('messages name the robot and the task', () => {
   it('progress and success of Push, Load and Pull All', () => {
     assert.match(handler('abbRobot.pushCurrentFile'), /const where = `\$\{taskName\} on \$\{entry\.config\.name\}`;/);
-    assert.match(handler('abbRobot.pushCurrentFile'), /title: `Pushing \$\{moduleName\}\$\{path\.extname\(filePath\)\} to \$\{where\}…`/);
+    const helper = ext.slice(ext.indexOf('const pushDepsFor = ('), ext.indexOf('const watchProvider'));
+    assert.match(helper, /title: `\$\{progress\} \$\{path\.basename\(file\)\} into \$\{taskName\} on \$\{entry\.config\.name\}…`/);
     assert.match(handler('abbRobot.pushCurrentFile'), /`✓ Pushed \$\{moduleName\}\$\{path\.extname\(filePath\)\} to \$\{where\}\.`/);
-    assert.match(handler('abbRobot.uploadModule'), /title: `Loading \$\{fileName\} into \$\{where\}…`/);
     assert.match(handler('abbRobot.uploadModule'), /`✓ \$\{fileName\} loaded into \$\{where\}\.`/);
     assert.match(handler('abbRobot.pullAllModules'), /title: `Pulling \$\{programMods\.length\} modules from \$\{where\}…`/);
   });

@@ -12,8 +12,8 @@ function fakeUi(offerYes: boolean, confirmYes: boolean) {
   const ui: AfterLoadUi = {
     info: m => { log.info.push(m); },
     offer: async (m, button) => { log.offers.push(`${m} [${button}]`); return offerYes; },
-    confirm: async r => { log.confirms.push(r); return confirmYes; },
-    resetRapid: async () => { log.resets++; },
+    // The extension's hook asks and then sends: one call, counted as the ask and, when confirmed, the move.
+    moveToMain: async r => { log.confirms.push(r); if (confirmYes) { log.resets++; } return confirmYes; },
   };
   return { ui, log };
 }
@@ -50,7 +50,7 @@ describe('PP to Main after Push and Load', () => {
 
   it('the ask names every task the move takes on a multi-task system', () => {
     assert.deepEqual(ppToMainRequest(['T_ROB1', 'T_ROB2']), {
-      label: 'PP to Main', tier: 'disruptive',
+      label: 'PP to Main', tier: 'disruptive', taskApplies: true, tasks: ['T_ROB1', 'T_ROB2'],
       sideEffects: ['Moves the program pointer to main for the whole execution, in every task it runs: T_ROB1, T_ROB2.'],
     });
     assert.deepEqual(ppToMainRequest(['T_ROB1']).sideEffects, ['Moves the program pointer of T_ROB1 to main.']);

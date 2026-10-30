@@ -17,6 +17,8 @@ const os = require('node:os');
 const path = require('node:path');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/** The controller files step U3 opens in the editor (#66): text, by extension. */
+const TEXT_FILE = /\.(mod|sys|prg|cfg|txt|log|xml|json|csv|md|ini|cmd)$/i;
 
 // A small RAPID module: a main, a procedure with a parameter, a call to it.
 const SAMPLE_MOD = [
@@ -227,7 +229,8 @@ async function stepU3(ctx) {
     sel.devicePrefix = devices.length ? devices[0].name.slice(0, Math.min(4, devices[0].name.length)) : null;
     for (const vol of ['HOME', '$HOME', 'TEMP', '$TEMP', 'BACKUP', '$BACKUP']) {
       const list = await tryRead(`listDirectory ${vol}`, () => rm.listDirectory(vol)) || [];
-      const f = list.find(e => e.type !== 'dir' && e.name);
+      // A text file: Open Controller File opens anything else through VS Code's own viewer.
+      const f = list.find(e => e.type !== 'dir' && e.name && TEXT_FILE.test(e.name));
       if (f) { sel.file = { path: `${vol}/${f.name}`, name: f.name }; break; }
     }
     const domains = await tryRead('listCfgDomains', () => rm.listCfgDomains()) || [];

@@ -7,7 +7,10 @@
 // one step (RW 8.2.1: axis 5 set to 1 with the default Small increment moved it
 // about 0.01 degree). `speed` and `mode` are not sent: ABB's jog form has no
 // speed field and no mode field, and the controller jogs in the jog mode of the
-// unit selected for jogging.
+// unit selected for jogging. The unit is sent: the extension names it
+// (src/mechunitResolver.ts), and the client selects it for jogging first when
+// the controller has another one selected (or none); that selection stays, on
+// the FlexPendant too.
 
 export const JOG_AXIS_VALUE_SETTING =
   'The axis value each Jog click sends (ABB\'s axis1..axis6). ABB documents it without a unit, so it is not degrees or '
@@ -26,12 +29,17 @@ export const JOG_AXIS_VALUE_TOOLTIP = 'The axis value sent with each jog click: 
 /** The Jog block's rows: one click is one step; there is no stop button, because there is no jog in progress to stop. */
 export const JOG_STEP_TOOLTIP = 'Each click sends one jog step. Stop robot motion at the FlexPendant or with the emergency stop.';
 
-/** What the first-jog confirmation lists. */
-export function jogConfirmEffects(axisValue: number): string[] {
+/**
+ * What the first-jog confirmation lists: the unit the jog is sent to, the
+ * step, what the Joint or Cartesian setting is and is not, and when the
+ * question comes back. `labels` is the Motion view's axis-label setting.
+ */
+export function jogConfirmEffects(axisValue: number, unit: string, labels: string): string[] {
   return [
-    `Sends one jog step per click: axis value ${axisValue} (no unit; ABB documents none) in the direction of the button, with the smallest increment size.`,
+    `Jogs ${unit}: one jog step per click, axis value ${axisValue} (no unit; ABB documents none) in the direction of the button, with the smallest increment size.`,
+    `If ${unit} is not the unit the controller has selected for jogging, it is selected first, and it stays selected on the FlexPendant too. The controller jogs it in the jog mode set for it there. The ${labels} setting of the Motion view only chooses the axis labels you click; it is not sent.`,
     'Keep the workspace clear. The jog is sent in any mode; the controller decides whether the mode, the motors and its other conditions allow it, and its refusal is shown as it answers.',
-    'Asked once per connection to this robot, and again when the axis value is raised.',
+    'Asked once per connection to this robot, and again when the axis value is raised, the unit changes or the axis labels change.',
   ];
 }
 

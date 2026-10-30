@@ -47,11 +47,6 @@ export interface VirtualTimeReading {
   state?: string;
 }
 
-/** What the command needs from the active robot. */
-export interface VirtualTimeRobot {
-  setVirtualTimeScale(scale: number): Promise<void>;
-}
-
 /** The notification text: time in seconds, running or paused, speed, state, and why there is no pause. */
 export function virtualTimeSummary(vt: VirtualTimeReading): string {
   const speed = vt.speed === undefined ? '' : vt.speed === Infinity ? ', full speed' : `, ${vt.speed}x`;
@@ -73,12 +68,13 @@ export function virtualTimeNotice(vt: VirtualTimeReading, gen: VirtualTimeGenera
 }
 
 /**
- * Run the action the user picked; anything that is not a speed action sends
- * nothing, and nothing is sent on a generation where RAPID Live does not set
- * the speed.
+ * The scale the action the user picked asks for (`setVirtualTimeScale`, sent
+ * by the extension behind its confirmation). Undefined, so nothing is sent,
+ * for anything that is not a speed action, and on a generation where RAPID
+ * Live does not set the speed.
  */
-export async function runVirtualTimeAction(robot: VirtualTimeRobot, action: string | undefined, gen: VirtualTimeGeneration = 'rw7'): Promise<void> {
-  if (!virtualTimeWritable(gen)) { return; }
-  if (action === undefined || !Object.prototype.hasOwnProperty.call(SCALE, action)) { return; }
-  await robot.setVirtualTimeScale(SCALE[action as VirtualTimeAction]);
+export function virtualTimeScaleFor(action: string | undefined, gen: VirtualTimeGeneration = 'rw7'): number | undefined {
+  if (!virtualTimeWritable(gen)) { return undefined; }
+  if (action === undefined || !Object.prototype.hasOwnProperty.call(SCALE, action)) { return undefined; }
+  return SCALE[action as VirtualTimeAction];
 }

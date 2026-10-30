@@ -38,12 +38,20 @@ describe('the jog axis value is not degrees or millimetres', () => {
   });
 
   it('the confirmation lists the axis value without a unit and without a speed', () => {
-    const lines = jogConfirmEffects(5);
+    const lines = jogConfirmEffects(5, 'ROB_1', 'Joint');
     const text = lines.join(' ');
     assert.match(text, /axis value 5/);
     assert.match(text, /no unit/);
     assert.match(text, /one jog step/);
     assert.doesNotMatch(text, /degrees|\bmm\b|speed/i);
+  });
+
+  it('the confirmation names the mechanical unit it jogs, says it is selected for jogging first, and that the labels setting is not sent (review finding 11)', () => {
+    const lines = jogConfirmEffects(1, 'ROB_2', 'Cartesian');
+    assert.match(lines[0], /^Jogs ROB_2: one jog step per click, axis value 1 /);
+    assert.match(lines[1], /^If ROB_2 is not the unit the controller has selected for jogging, it is selected first, and it stays selected on the FlexPendant too\. The controller jogs it in the jog mode set for it there\. The Cartesian setting of the Motion view only chooses the axis labels you click; it is not sent\.$/);
+    assert.match(lines[lines.length - 1], /again when the axis value is raised, the unit changes or the axis labels change\.$/);
+    assert.doesNotMatch(lines.join(' '), /ROB_1/);
   });
 
   it('the status line and tooltip do not name a unit either', () => {

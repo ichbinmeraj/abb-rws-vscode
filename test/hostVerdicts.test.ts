@@ -647,7 +647,8 @@ describe('host harness report and wiring', () => {
     assert.match(runner, /no VC: skipped/);
     // U1 needs no controller and runs without RWS_TEST_HOST.
     assert.match(runner, /const NO_CONTROLLER_RUN = ONLY === 'U1';/);
-    assert.match(runner, /const NO_VC = TARGET \|\| NO_CONTROLLER_RUN \? false : /);
+    // ...and so does the stub run (RWS_TEST_STUB), which starts its own controller.
+    assert.match(runner, /const NO_VC = TARGET \|\| NO_CONTROLLER_RUN \|\| STUB \? false : /);
     const ci = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8');
     assert.doesNotMatch(ci, /RWS_TEST_HOST:/, 'CI has no controller');
     // vendor/ is not in git: each job packs the client at CLIENT_REF before npm ci.
@@ -683,5 +684,92 @@ describe('host harness report and wiring', () => {
     const integrity = lock.packages['node_modules/abb-rws-client']?.integrity;
     assert.ok(integrity, 'the lock names an integrity for abb-rws-client');
     assert.ok(ci.includes(`\n  CLIENT_INTEGRITY: ${integrity}\n`), `CLIENT_INTEGRITY is not the lock's ${integrity}`);
+  });
+});
+
+describe('host harness verdicts: L1, the 1.5.0 live checks', () => {
+  const base = () => {
+    const f = fixture();
+    f.result.l1 = {
+      rows: [] as Array<Record<string, unknown>>, cleanup: ['ZZ_L1 unloaded'], notes: [], task: 'T_ROB1',
+      original: { speedRatio: 100, ctrlstate: 'motoroff', opmode: 'AUTO', execstate: 'stopped', modules: ['BASE'], programPointer: '/' },
+      final: { speedRatio: 100, ctrlstate: 'motoroff', opmode: 'AUTO', execstate: 'stopped', modules: ['BASE'], programPointer: '/' },
+      locks: {
+        before: { kind: 'mastership', rapid: 'nomaster', cfg: 'nomaster', motion: 'nomaster', rmmp: 'none' },
+        afterWatchConnect: { kind: 'mastership', rapid: 'nomaster', cfg: 'nomaster', motion: 'nomaster', rmmp: 'none' },
+        end: { kind: 'mastership', rapid: 'nomaster', cfg: 'nomaster', motion: 'nomaster', rmmp: 'none' },
+      },
+      windows: {},
+    };
+    return f;
+  };
+  const l1 = (f: ReturnType<typeof base>) => f.result.l1 as { rows: Array<Record<string, unknown>>; locks: Record<string, Record<string, unknown>>; windows: Record<string, { start: string; end: string }>; final: Record<string, unknown> };
+
+  it('the connect in Watch only passes with the lock state unchanged and only GETs off the lock paths; a lock request or a change fails it', () => {
+    const f = base();
+    const connect = f.step('L1 watch connect', 'abbRobot.connectRobot', s => { s.request('GET', '/rw/system', 200); s.request('GET', '/ctrl/identity', 200); s.request('GET', '/rw/rapid/execution', 200); });
+    l1(f).windows.connect = { start: connect.start, end: connect.end };
+    assert.match(harness.verdicts(f.result, f.log)['L1 watch connect locks'], /^PASS \(3 requests, all GET, none on a mastership, RMMP or control-station path; locks /);
+    const g = base();
+    const c2 = g.step('L1 watch connect', 'abbRobot.connectRobot', s => { s.request('GET', '/rw/system', 200); s.request('POST', '/rw/mastership/rapid?action=request', 204); });
+    l1(g).windows.connect = { start: c2.start, end: c2.end };
+    assert.match(harness.verdicts(g.result, g.log)['L1 watch connect locks'], /^FAIL: 1 write\(s\) in the connect window: POST \/rw\/mastership\/rapid\?action=request/);
+    const h = base();
+    const c3 = h.step('L1 watch connect', 'abbRobot.connectRobot', s => { s.request('GET', '/rw/mastership', 200); });
+    l1(h).windows.connect = { start: c3.start, end: c3.end };
+    assert.match(harness.verdicts(h.result, h.log)['L1 watch connect locks'], /^FAIL: a lock request in the connect window: GET \/rw\/mastership/);
+    const k = base();
+    const c4 = k.step('L1 watch connect', 'abbRobot.connectRobot', s => { s.request('GET', '/rw/system', 200); });
+    l1(k).windows.connect = { start: c4.start, end: c4.end };
+    l1(k).locks.afterWatchConnect = { ...l1(k).locks.afterWatchConnect, rapid: 'remote (abb-rws-client)' };
+    assert.match(harness.verdicts(k.result, k.log)['L1 watch connect locks'], /^FAIL: the lock state changed over the watch-only connect/);
+  });
+
+  it('the rows: PASS, FAIL, SKIPPED and an expected refusal; the confirmations must name the robot and the task', () => {
+    const f = base();
+    f.step('L1 push new', 'abbRobot.pushCurrentFile', s => { s.ui('warning', { text: `Push Current File in T_ROB1 on ${label}`, buttons: [`Continue on ${harness.ROBOT_NAME}`], modal: true }); });
+    l1(f).rows.push({ row: '2b', name: 'L1 push new', ok: true, detail: 'ZZ_L1 loaded as pushed' });
+    f.step('L1 restore', 'abbRobot.restoreModule', s => { s.ui('warning', { text: `Restore module ZZ_L1 in T_ROB1 on ${label}`, buttons: [`Continue on ${harness.ROBOT_NAME}`], modal: true }); });
+    l1(f).rows.push({ row: '4a', name: 'L1 restore', ok: true, detail: 'the changed copy is back' });
+    f.step('L1 speed ratio', 'abbRobot.setSpeedRatio', s => { s.ui('warning', { text: `Set Speed Ratio on ${label}`, buttons: [`Write to ${harness.ROBOT_NAME}`], modal: true }); });
+    l1(f).rows.push({ row: '2d', name: 'L1 speed ratio', ok: true, detail: 'speed 100 -> 50' });
+    f.step('L1 motors on refused', 'abbRobot.motorsOn', s => {
+      s.ui('warning', { text: `Motors On on ${label}`, buttons: ['Continue'], modal: true });
+      s.ui('error', { text: `${label}: Motors On: motion control is not allowed from this station`, buttons: ['Allow Motion Control…'], modal: false });
+    });
+    l1(f).rows.push({ row: '7a', name: 'L1 motors on refused', ok: true, detail: 'controller state motoroff', expectRefusal: 'motion control', why: 'motion control is not allowed from this station yet' });
+    f.step('L1 utf-16', 'abbRobot.pushCurrentFile', s => { s.ui('warning', { text: 'Push Current File not sent: ZZ_L1.mod has a control character on line 1, column 2 (byte 0x00).', buttons: [], modal: false }); });
+    l1(f).rows.push({ row: '6b', name: 'L1 utf-16', ok: false, detail: 'no control-character refusal' });
+    l1(f).rows.push({ row: '7', name: 'L1 motors (RobotWare 8)', skipped: 'Remote Access is off on this controller (externalControlEnabled false)' });
+    const v = harness.verdicts(f.result, f.log);
+    assert.equal(v['L1 push new'], 'PASS (2b; ZZ_L1 loaded as pushed)');
+    assert.match(v['L1 motors on refused'], /^REFUSED \(7a\): as expected \(motion control is not allowed from this station yet\); controller state motoroff$/);
+    assert.equal(v['L1 utf-16'], 'FAIL (6b): no control-character refusal');
+    assert.equal(v['L1 motors (RobotWare 8)'], 'SKIPPED (7): Remote Access is off on this controller (externalControlEnabled false)');
+    assert.equal(v['L1 confirmations'], `PASS (4 confirmations, each naming ${harness.ROBOT_NAME}, the task writes naming T_ROB1)`);
+    assert.equal(v['L1 restored'], 'PASS (speed 100, state motoroff, execution stopped, modules BASE, program pointer /; cleanup: ZZ_L1 unloaded)');
+    assert.match(v['L1 end locks'], /^PASS \(after the disconnect: /);
+    // A task write whose confirmation names no task, and a lock left at the end, fail.
+    const g = base();
+    for (let i = 0; i < 4; i++) { g.step(`L1 push ${i}`, 'abbRobot.pushCurrentFile', s => { s.ui('warning', { text: i === 3 ? `Push Current File on ${label}` : `Push Current File in T_ROB1 on ${label}`, buttons: ['Continue'], modal: true }); }); }
+    l1(g).locks.end = { kind: 'write-access', held: true, heldByMe: true, heldByName: 'abb-rws-client', externalControlEnabled: true };
+    const w = harness.verdicts(g.result, g.log);
+    assert.match(w['L1 confirmations'], /^FAIL: a task write does not name T_ROB1: Push Current File on /);
+    assert.match(w['L1 end locks'], /^FAIL: after the disconnect: write access still held by "abb-rws-client"/);
+    l1(g).final.modules = ['BASE', 'ZZ_L1'];
+    assert.match(harness.verdicts(g.result, g.log)['L1 restored'], /^FAIL: not back as found: modules BASE -> BASE,ZZ_L1/);
+  });
+
+  it('the step runs alone, connects itself, and the runner takes L1 as a step token', () => {
+    const suite = fs.readFileSync(path.join(root, 'test', 'host', 'stub-ext', 'suite.js'), 'utf8');
+    assert.match(suite, /tokens\.includes\('L1'\) && tokens\.length > 1/);
+    assert.match(suite, /tokens\[0\] === 'L1'\) \{ await l1\.stepL1\(uctx\); return; \}/);
+    const runner = fs.readFileSync(path.join(root, 'test', 'host', 'run-commands.test.js'), 'utf8');
+    assert.match(runner, /match\(\/U\[1-4\]\|W1\|L1\|\[A-I\]\/g\)/);
+    assert.match(runner, /last-run-l1-\$\{target\.port\}\.json/);
+    const l1src = fs.readFileSync(path.join(root, 'test', 'host', 'stub-ext', 'l1.js'), 'utf8');
+    assert.match(l1src, /MODULE ZZ_L1/);
+    assert.doesNotMatch(l1src, /PROC main\(\)/, 'the probe has no main: no pointer offer, no collision');
+    assert.doesNotMatch(l1src, /setVirtualTime|showVirtualTime|setOpMode|restartController/, 'no virtual time, no mode change, no restart');
   });
 });

@@ -36,6 +36,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const { getSystem, getResource, getLockState, spanText } = require('./probe.js');
 const acceptance = require('./acceptance.js');
 const u4 = require('./u4.js');
+const w1 = require('./w1.js');
+const l1 = require('./l1.js');
 
 // Test constants for step A: the PIN the lock sets, and a wrong one tried first.
 const PIN = process.env.HOSTTEST_PIN || '4711';
@@ -255,10 +257,12 @@ async function main(result) {
   const cancelConfirm = () => undefined;
 
   // Which steps: A-I write to the controller (the default); U1-U3 only read and never mix with them.
-  const tokens = (env.HOSTTEST_ONLY || '').toUpperCase().match(/U[1-4]|[A-I]/g) || [];
-  const uOnly = tokens.length > 0 && tokens.every(t => t[0] === 'U');
-  if (tokens.some(t => t[0] === 'U') && !uOnly) { throw new Error('the read-only U steps never run together with the write steps A-I'); }
+  // W1 (the stub controller run) is read-only too: every write is refused before it is sent.
+  const tokens = (env.HOSTTEST_ONLY || '').toUpperCase().match(/U[1-4]|W1|L1|[A-I]/g) || [];
+  const uOnly = tokens.length > 0 && tokens.every(t => t[0] === 'U' || t === 'W1' || t === 'L1');
+  if (tokens.some(t => t[0] === 'U' || t === 'W1' || t === 'L1') && !uOnly) { throw new Error('the read-only U steps never run together with the write steps A-I'); }
   if (tokens.includes('U4') && tokens.length > 1) { throw new Error('U4 writes to the controller and runs alone'); }
+  if (tokens.includes('L1') && tokens.length > 1) { throw new Error('L1 writes to the controller and runs alone'); }
   result.only = tokens.join('') || undefined;
   const wanted = t => (tokens.length ? tokens.includes(t) : /^[A-I]$/.test(t));
 
@@ -293,6 +297,10 @@ async function main(result) {
     },
   };
 
+  // W1 connects to the stub controller itself (it answers the mode question at the connect).
+  if (uOnly && tokens.length === 1 && tokens[0] === 'W1') { await w1.stepW1(uctx); return; }
+  // L1 (the 1.5.0 live checks) sets Watch only first and connects itself: the connect is its first check.
+  if (uOnly && tokens.length === 1 && tokens[0] === 'L1') { await l1.stepL1(uctx); return; }
   // U1 needs no controller at all: no connect.
   if (uOnly && tokens.length === 1 && tokens[0] === 'U1') { await acceptance.stepU1(uctx); return; }
   // U2 adds and removes entries and connects the active one itself.

@@ -51,13 +51,17 @@ import { callServiceRoutine, modeRefusal } from './serviceRoutine';
 import { saveModuleText, moduleSaveName, MODULE_SAVE_LABEL } from './moduleDownload';
 import { clockReadMessage, clockSetPrompt, clockSetDefault, clockSetDone, parseClockInput, clockWriteRefused, clockWriteRefusedMessage } from './controllerClock';
 import { volumesToShow, fileVolumesText } from './fileVolumes';
-import { runVirtualTimeAction, virtualTimeActionsFor, virtualTimeNotice, type VirtualTimeReading } from './virtualTime';
+import { virtualTimeActionsFor, virtualTimeNotice, virtualTimeScaleFor, type VirtualTimeReading } from './virtualTime';
 import {
   LAST_SEEN_KEY, addressText, connectWithRetries, differentSystemQuestion, elsewhereMessage, goneMessage, identityVerdict,
-  onceAtATime, planConnect, settleConnect, withLastSeen, withoutLastSeen,
+  onceAtATime, planConnect, settleConnect, unverifiedPortQuestion, unverifiedWriteRefusal, withLastSeen, withoutLastSeen,
   type AttemptResult, type ConnectPlan, type LastSeen, type PlanSteps, type PortOf, type SessionNow, type SystemReading,
 } from './portRecovery';
-import { confirmRobot, confirmWrite, heartbeatWarning, isRapidRunning, jogNeedsAsk, opModeRequest, speedRatioRequest, virtualOnlyRequest, whileRunningRequest, restartSideEffects, robotLabel, type ConfirmRequest, type ConfirmRobot, type ConfirmUi } from './confirm';
+import {
+  confirmRobot, heartbeatWarning, isRapidRunning, jogNeedsAsk, opModeRequest, programChangeRequest, speedRatioRequest, type JogConfirmed,
+  virtualOnlyRequest, restartSideEffects, robotLabel, sendConfirmed, sendReducing, startEffect,
+  type ConfirmRequest, type ConfirmRobot, type ConfirmUi, type GuardUi, type ReducingRequest, type SendOutcome,
+} from './confirm';
 import { isProgramRunningRefusal, isSemanticError, opModeRefusalNote, refusalButtons, refusalMessage, safetyStopName, semanticErrorText, stopOfferDetail, withNote, mastershipHolderText, writeAccessHolderText, type RobotFacts } from './refusalUi';
 import {
   MOTION_CONTROL_SWITCH, MotionControlTracker, WITHDRAW_BUTTON, allowFromRefusal, confirmMotionWrite, disconnectButton, disconnectMessage,
@@ -73,12 +77,24 @@ import { withStrictTlsHint } from './strictTlsHint';
 import { writableAttributes } from './cfgAttributes';
 import { dipcCountPrompt, dipcMessageText, dipcSizePrompt, validateDipcCount, validateDipcSize } from './dipcQueue';
 import { activeTasks, quietTask, resolveTask, type TaskQuery, type TaskState, type TaskUi } from './taskResolver';
+import { resolveMechunit } from './mechunitResolver';
+import { modulesWithMain } from './mainHolders';
+import { binaryFileNote, looksLikeText } from './controllerFile';
+import { loadBullets, loadInsideSend, preflight, pushModule, restoreInsideSend, savedBeforeLoad, type PushDeps } from './pushFlow';
+import {
+  asciiCheck, baseVerdict, changedText, controllerHash, failureReport, hasNonAscii, moduleNameMismatch, pruneRestorePoints, restorePointPaths, whenText,
+  type BaseVerdict, type RestoreFs, type RestoreMeta,
+} from './pushGuard';
+import { RobotModes, SWITCH_TO_OPERATE, defaultRecord, effectiveMode, modeBadge, watchOnlyRefusal, type ModeVerdict } from './watchMode';
+import { setRobotMode, settleMode as settleRobotMode, type ModeRobot, type ModeUi } from './modeFlow';
 import { FileOrigins } from './fileOrigins';
-import { afterLoad } from './ppAfterLoad';
+import { afterLoad, ppToMainRequest } from './ppAfterLoad';
 import type { SignalItem } from './IoTreeProvider';
 import type { Signal } from 'abb-rws-client';
 
 let globalMulti: MultiRobotManager | undefined;
+/** The per-robot mode records (src/watchMode.ts), in this PC's global state; set at activation. */
+let robotModes!: RobotModes;
 /**
  * Runs this window's saves of the robot list and the applying of changes made elsewhere one at
  * a time (see `changeSavedRobots`, `applyStoredRobots`). Set on activation.
@@ -89,7 +105,7 @@ let robotListSync: RobotListSync | undefined;
  * robot id. An entry is removed when that robot disconnects, so the next
  * connection asks again. Reset on each extension activation.
  */
-const jogConfirmed = new Map<string, number>();
+const jogConfirmed = new Map<string, JogConfirmed>();
 
 // ─── Confirmations before a write ────────────────────────────────────────────
 
@@ -144,9 +160,56 @@ function heartbeatSideEffects(entry: RobotEntry): string[] {
   return warning ? [warning] : [];
 }
 
-/** Ask before a write to this robot (see `confirmWrite`). False means: send nothing. */
-function confirm(entry: RobotEntry, request: ConfirmRequest): Promise<boolean> {
-  return confirmWrite(confirmUi, confirmRobotOf(entry), request);
+/** The window and the log every send goes through (see `sendConfirmed` and `sendReducing`). Not a GuardUi: only `guardUiFor` makes one, with the robot's mode. */
+const guardBase: ConfirmUi & Pick<GuardUi, 'log'> = { ...confirmUi, log: line => Logger.trace('write', line) };
+
+/** The robot's mode now, from its live state and its record (src/watchMode.ts). */
+function modeOf(entry: RobotEntry): ModeVerdict {
+  const s = entry.manager.state;
+  const robot = confirmRobotOf(entry);
+  return effectiveMode(robotModes.get(entry.id), { connected: s.connected, identity: s.identity, host: robot.host, port: robot.port });
+}
+
+/** The refusal of a write in Watch only, with the switch as its button. */
+function showWatchOnlyRefusal(entry: RobotEntry, sentence: string): void {
+  const button = SWITCH_TO_OPERATE(entry.config.name);
+  void vscode.window.showWarningMessage(sentence, button).then(choice => {
+    if (choice === button) { void vscode.commands.executeCommand('abbRobot.setRobotMode', entry.id, 'operate'); }
+  });
+}
+
+/**
+ * The window of one robot's sends: the mode seam reads that robot's mode at
+ * send time (a controller that stops reporting a type, or a record that no
+ * longer matches, refuses the write), and a refusal names the way back.
+ */
+function guardUiFor(entry: RobotEntry): GuardUi {
+  return {
+    ...guardBase,
+    refuse: label => {
+      if (unverifiedPorts.has(entry.id)) { return unverifiedWriteRefusal(label, robotLabel(confirmRobotOf(entry))); }
+      const verdict = modeOf(entry);
+      return verdict.mode === 'watch' ? watchOnlyRefusal(label, confirmRobotOf(entry), verdict.reason) : undefined;
+    },
+    showRefusal: sentence => { showWatchOnlyRefusal(entry, sentence); },
+  };
+}
+
+/**
+ * Ask, then send, to this robot: the one way a write leaves a command (see
+ * `sendConfirmed`). The result says whether it ran. An error the write
+ * throws is the caller's to show, through `showError(label, e, entry)`.
+ */
+function sendTo<T>(entry: RobotEntry, request: ConfirmRequest, send: () => PromiseLike<T>): Promise<SendOutcome<T>> {
+  return sendConfirmed(guardUiFor(entry), confirmRobotOf(entry), request, send);
+}
+
+/**
+ * A write that only stops or gives up (Stop RAPID, Motors Off, a withdrawal,
+ * the release of this tool's own locks): sent with no dialog (see `sendReducing`).
+ */
+function sendReducingTo<T>(entry: RobotEntry, request: ReducingRequest, send: () => PromiseLike<T>): Promise<SendOutcome<T>> {
+  return sendReducing(guardUiFor(entry), confirmRobotOf(entry), request, send);
 }
 
 // ─── RobotWare 8 motion control ──────────────────────────────────────────────
@@ -161,7 +224,7 @@ const motionTracker = new MotionControlTracker();
 /** The window the motion-control flows talk through, with refusals shown for this robot. */
 function motionUiFor(entry: RobotEntry): MotionUi {
   return {
-    ...confirmUi,
+    ...guardUiFor(entry),
     info: message => { void vscode.window.showInformationMessage(message); },
     ask: (message, buttons) => vscode.window.showWarningMessage(message, ...buttons),
     refused: (label, e) => showError(label, e, entry),
@@ -241,16 +304,18 @@ async function allowFor(entry: RobotEntry, origin: AllowOrigin, remedy?: Refusal
 }
 
 /**
- * Ask before a start, a routine run or a jog: on RobotWare 8 the confirmation
- * carries the motion-control line, and `Allow Motion Control first…` where
- * motion control is not known to be allowed (see `confirmMotionWrite`).
+ * A motion write (a start, a routine run, Motors On, a jog): asks with the
+ * RobotWare 8 motion-control line and its Allow button (`confirmMotionWrite`),
+ * then sends (see `sendConfirmed`).
  */
-function confirmMotion(entry: RobotEntry, request: ConfirmRequest): Promise<boolean> {
-  return confirmMotionWrite(
-    confirmUi, () => confirmRobotOf(entry), request,
-    () => motionLineOf(entry, motionTracker.allowedHere(entry.id)),
-    () => allowFor(entry, 'start-confirmation'),
-  );
+function sendMotion<T>(entry: RobotEntry, request: ConfirmRequest, send: () => PromiseLike<T>): Promise<SendOutcome<T>> {
+  return sendConfirmed(guardUiFor(entry), confirmRobotOf(entry), request, send, {
+    ask: (ui, _robot, req) => confirmMotionWrite(
+      ui, () => confirmRobotOf(entry), req,
+      () => motionLineOf(entry, motionTracker.allowedHere(entry.id)),
+      () => allowFor(entry, 'start-confirmation'),
+    ).then(ok => ok ? 'confirmed' : 'cancelled'),
+  });
 }
 
 /** Show a notice of the motion-control tracker for this robot. */
@@ -1096,6 +1161,8 @@ async function finishAddRobot(
         apply: async () => {
           await storePasswordSecret(secrets, config.id, password);
           multi.addRobot(config);
+          // Decide the mode by the controller's type at the first connect (src/watchMode.ts).
+          await robotModes.set(config.id, defaultRecord(config.host, config.port));
         },
         undo: async () => {
           multi.removeRobot(config.id);
@@ -1353,6 +1420,12 @@ const connectsInFlight = new Set<string>();
 const sessionLogins = new WeakMap<RobotManager, { username: string; password: string }>();
 /** Sessions whose system id was not read when Connect ended: checked against the record once it is. */
 const unverifiedSessions = new Map<string, { manager: RobotManager; last: LastSeen }>();
+/**
+ * Robots whose session runs on a port a scan found while the controller gave no
+ * system id to confirm it is the robot last seen: writes are held back until a
+ * reading confirms it (tracker 573). Cleared with `unverifiedSessions`.
+ */
+const unverifiedPorts = new Set<string>();
 
 /** The robot's session, as planConnect reads it. */
 function sessionOf(entry: { config: RobotConfig; manager: RobotManager }): SessionNow {
@@ -1396,7 +1469,11 @@ function robotsInMemory(multi: MultiRobotManager, secrets: vscode.SecretStorage)
     disconnect: async id => { await endConnection(multi, id); },
     remove: id => { void endConnection(multi, id, 'remove'); },
     update: (id, fields) => multi.updateConfig(id, fields as Partial<Omit<RobotConfig, 'id'>>),
-    add: async entry => multi.addRobot(await configOf(entry, secrets)),
+    add: async entry => {
+      const config = await configOf(entry, secrets);
+      multi.addRobot(config);
+      await robotModes.set(config.id, defaultRecord(config.host, config.port));
+    },
   };
 }
 
@@ -1529,6 +1606,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const strictTls = cfg.get<boolean>('strictTls', false);
   const multi = MultiRobotManager.fromConfigs(await loadConfigs(cfg, context.secrets), { refreshIntervalMs, strictTls });
   globalMulti = multi;
+  robotModes = new RobotModes(context.globalState);
 
   // The saved robot list is shared with other windows, hand edits and Settings Sync: a change
   // of abbRobot.robots is applied here by robot id, in turn with this window's own saves (whose
@@ -1617,15 +1695,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Motion control allowed here counts for one connection: forgotten when it ended. A
     // removed robot (no entry) keeps it until its disconnect, which waits for the withdrawal.
     if (entry && !entry.manager.state.connected) { motionTracker.clear(id); }
-    if (!entry?.manager.state.connected) { jogConfirmed.delete(id); unverifiedSessions.delete(id); return; }
+    if (!entry?.manager.state.connected) { jogConfirmed.delete(id); unverifiedSessions.delete(id); unverifiedPorts.delete(id); return; }
     if (connectsInFlight.has(id)) { return; }
     const reading = entry.manager.state.systemInfo;
     const pending = unverifiedSessions.get(id);
-    if (pending && pending.manager !== entry.manager) { unverifiedSessions.delete(id); }
+    if (pending && pending.manager !== entry.manager) { unverifiedSessions.delete(id); unverifiedPorts.delete(id); }
     else if (pending) {
       const verdict = identityVerdict(pending.last, reading);
       if (verdict === 'unknown') { return; }
       unverifiedSessions.delete(id);
+      unverifiedPorts.delete(id);
       if (verdict === 'different' && reading) {
         void onceAtATime(connectsInFlight, id, () => askDifferentSystem(id, reading, pending.last)).then(again => {
           if (again) { void vscode.commands.executeCommand('abbRobot.connectRobot', id); }
@@ -1663,6 +1742,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
    * Returns what to show once it ended, or `again` when the person kept another controller as
    * the robot (the caller connects again).
    */
+  /**
+   * After a connect, the mode (src/watchMode.ts): a robot Add Robot saved
+   * gets its class recorded, and a notice when it is not virtual; a robot with
+   * no record (saved before 1.5.0, or synced from another PC) that answers as
+   * real or unknown is asked once, with no preselected answer; dismissing
+   * leaves it watch-only.
+   */
+  // The mode flows (src/modeFlow.ts) see one robot through this adapter, read live at each step, and talk through one window.
+  const modeRobotOf = (entry: RobotEntry): ModeRobot => ({
+    id: entry.id,
+    robot: confirmRobotOf(entry),
+    connected: () => entry.manager.state.connected,
+    identityRead: () => !!entry.manager.state.identity,
+    // The client reads the identity on its slow refresh; read it now, so the mode is settled on this connect.
+    refresh: () => entry.manager.refresh(),
+    verdict: () => modeOf(entry),
+    motionAllowedHere: () => generationOf(entry.manager.state) === 'rw8' && motionTracker.allowedHere(entry.id),
+    withdraw: () => withdrawFor(entry),
+    releaseLocks: async () => {
+      const out = await sendReducingTo(entry, { label: 'Release own locks', exemptFromWatchOnly: true }, () => entry.manager.releaseMastershipAll());
+      if (!out.sent) { throw new Error(`the release was not sent (${out.why})`); }
+    },
+  });
+  const modeUi: ModeUi = {
+    notice: (message, buttons) => vscode.window.showInformationMessage(message, ...buttons),
+    modal: (message, detail, buttons) => vscode.window.showWarningMessage(message, { modal: true, detail }, ...buttons),
+    info: m => { vscode.window.showInformationMessage(m); },
+    warn: m => { vscode.window.showWarningMessage(m); },
+    log: line => Logger.info(line),
+    switchToOperate: id => { void vscode.commands.executeCommand('abbRobot.setRobotMode', id, 'operate'); },
+    refreshBadge: () => refreshModeBadge(),
+  };
+  const settleMode = async (id: string): Promise<void> => {
+    const entry = multi.entries.find(e => e.id === id);
+    if (!entry) { return; }
+    await settleRobotMode(modeRobotOf(entry), robotModes, modeUi);
+  };
+
   const connectOnce = async (id: string): Promise<{ again?: boolean; error?: unknown; message?: string }> => {
     const start = multi.entries.find(e => e.id === id);
     if (!start) { return {}; }
@@ -1760,7 +1877,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         multi.setActive(id);
         if (outcome.record) { await recordLastSeen(id, entry.manager.state.systemInfo); }
         if (outcome.verifyLater && last) { unverifiedSessions.set(id, { manager: entry.manager, last }); }
-        if (outcome.kind === 'save') { await saveConnectedPort(id, name, saved, outcome); }
+        if (outcome.kind === 'save') {
+          if (outcome.verifyLater && last) {
+            // A port the scan found, with no system id to confirm the controller: ask before saving it, and hold writes until it confirms.
+            unverifiedPorts.add(id);
+            const q = unverifiedPortQuestion(name, outcome.port, last);
+            if (await vscode.window.showWarningMessage(q.message, { modal: true, detail: q.detail }, q.button) === q.button) { await saveConnectedPort(id, name, saved, outcome); }
+            else { Logger.info(`"${name}": port ${outcome.port} not saved (the controller has not confirmed its system id); the session stays on it`); }
+          } else { await saveConnectedPort(id, name, saved, outcome); }
+        }
+        await settleMode(id);
         break;
     }
     if (result.kind === 'failed') { return { error: result.error }; }
@@ -1785,16 +1911,145 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // The task and text hash of each module file pulled or pushed (src/fileOrigins.ts).
   const origins         = new FileOrigins(context.workspaceState);
   /** After a load from a file: its task and text, as the controller now has them. */
-  const recordPushed = async (entry: RobotEntry, filePath: string, task: string): Promise<void> => {
-    const text = readText(filePath);
-    if (text !== undefined) { await origins.record(filePath, task, text, entry.id); }
+  /**
+   * Record a file's origin after a pull or a successful push, with the
+   * controller's own copy (one `getModuleText` GET) as the base a later push
+   * compares against. A failed read leaves the record without the base: the
+   * next push then stops once as unknown.
+   */
+  // The base is hashed from the module text read, not from the pulled file: the read holds a PERS at its declared
+  // value and the pulled file (a module save) its current one, and the push-time check reads the same text. One GET
+  // per pulled module, which takes no lock on any generation (VC probes J2 and J2b, 2026-10-30).
+  const recordWithBase = async (entry: RobotEntry, filePath: string, task: string, moduleName: string, text: string): Promise<void> => {
+    await origins.record(filePath, task, text, entry.id);
+    try { await origins.recordController(filePath, await entry.manager.getModuleText(task, moduleName)); }
+    catch (e) { Logger.info(`"${entry.config.name}": no base recorded for ${path.basename(filePath)} (${e instanceof Error ? e.message : String(e)})`); }
   };
+
+  // ─── The restore points: the controller's copy before a module is replaced ──
+  // Under the extension's global storage, outside any workspace, so a customer's
+  // program never lands in a git working tree by accident (src/pushGuard.ts).
+  const restoreRoot = context.globalStorageUri.fsPath;
+  const restoreFs: RestoreFs = {
+    list: dir => { try { return fs.readdirSync(dir); } catch { return []; } },
+    isDir: p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } },
+    size: f => { try { return fs.statSync(f).size; } catch { return 0; } },
+    remove: dir => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { Logger.warn(`restore point not removed: ${dir} (${e instanceof Error ? e.message : String(e)})`); } },
+    readMeta: f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')) as RestoreMeta; } catch { return undefined; } },
+  };
+  /**
+   * Save the controller's copy of a module before anything is sent; undefined when it could not be written (nothing
+   * is sent then). `spare` is the folder of the point being restored, which the retention then leaves alone.
+   */
+  const writeRestorePoint = (entry: RobotEntry, taskName: string, moduleName: string, ext: string, ctrl: { text: string; changeCount: number }, reason: string, spare?: string): { file: string; nonAscii: boolean; at: string } | undefined => {
+    const now = new Date();
+    const p = restorePointPaths(restoreRoot, entry.id, taskName, moduleName, ext, now);
+    const meta: RestoreMeta = {
+      robotId: entry.id, robotName: entry.config.name, host: confirmRobotOf(entry).host, task: taskName, module: moduleName, file: p.file,
+      changeCount: ctrl.changeCount, hash: controllerHash(ctrl.text), at: now.toISOString(), reason, nonAscii: hasNonAscii(ctrl.text),
+    };
+    try {
+      fs.mkdirSync(p.dir, { recursive: true });
+      fs.writeFileSync(p.file, ctrl.text, 'utf8');
+      fs.writeFileSync(p.meta, JSON.stringify(meta, null, 2) + '\n', 'utf8');
+    } catch (e) {
+      vscode.window.showErrorMessage(`${reason}: the controller's copy of ${moduleName} could not be saved to ${p.file} (${e instanceof Error ? e.message : String(e)}). Nothing was sent.`);
+      return undefined;
+    }
+    pruneRestorePoints(restoreRoot, restoreFs, undefined, undefined, spare);
+    return { file: p.file, nonAscii: meta.nonAscii, at: meta.at };
+  };
+  /** The restore points saved for one robot, newest first. */
+  const restorePointsOf = (entry: RobotEntry): RestoreMeta[] => {
+    const robotDir = path.join(restoreRoot, 'restore-points', entry.id.replace(/[\\/:*?"<>|]/g, '_'));
+    const out: RestoreMeta[] = [];
+    for (const task of restoreFs.list(robotDir)) {
+      for (const stamp of restoreFs.list(path.join(robotDir, task))) {
+        const meta = restoreFs.readMeta(path.join(robotDir, task, stamp, 'restore.json'));
+        if (meta) { out.push(meta); }
+      }
+    }
+    return out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+  };
+  /**
+   * What the push flow (src/pushFlow.ts) needs for one robot, task and file.
+   * The loads are defined inside the send, so every client write sits inside
+   * a wrapper; the mode seam is the robot's own (`guardUiFor`).
+   */
+  const pushDepsFor = (entry: RobotEntry, taskName: string, filePath: string, label: string, progress: string = 'Loading'): PushDeps => {
+    const fileName = path.basename(filePath);
+    const robot = confirmRobotOf(entry);
+    const guard = guardUiFor(entry);
+    return {
+      label, fileName, taskName, robotName: entry.config.name, robotLabel: robotLabel(robot), robotId: entry.id,
+      moduleOf: text => moduleOfFile(filePath, text),
+      refusal: () => guard.refuse?.(label, robot),
+      showRefusal: sentence => { if (guard.showRefusal) { guard.showRefusal(sentence, robot); } else { guard.warn(sentence); } },
+      readBytes: () => fs.readFileSync(filePath),
+      getModuleText: (task, module) => entry.manager.getModuleText(task, module),
+      isNotFound: e => { const code = (e as { code?: unknown } | null | undefined)?.code; return code === 'MODULE_NOT_FOUND' || code === 'RESOURCE_NOT_FOUND'; },
+      listModules: async task => (await entry.manager.listModulesDetailed(task)).map(m => m.name),
+      origin: () => origins.get(filePath),
+      // The file's own folder is spared by the retention: for a restore that is the chosen point's folder, for a push a workspace folder, which holds no point.
+      writeRestorePoint: (module, ctrl, reason) => writeRestorePoint(entry, taskName, module, path.extname(filePath), ctrl, reason, path.dirname(filePath)),
+      ui: {
+        modal: (message, detail, buttons) => vscode.window.showWarningMessage(message, { modal: true, ...(detail ? { detail } : {}) }, ...buttons),
+        warn: m => { vscode.window.showWarningMessage(m); },
+        info: m => { vscode.window.showInformationMessage(m); },
+        goToLine: async (line, column) => {
+          const editor = await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(filePath));
+          const pos = new vscode.Position(line - 1, Math.max(0, column - 1));
+          editor.selection = new vscode.Selection(pos, pos);
+          editor.revealRange(new vscode.Range(pos, pos));
+        },
+        showDiff: async (controllerText, title) => {
+          // The text just read, as a document of its own: no second round trip, nothing sent.
+          const doc = await vscode.workspace.openTextDocument({ content: controllerText, language: 'rapid' });
+          await vscode.commands.executeCommand('vscode.diff', doc.uri, vscode.Uri.file(filePath), title);
+        },
+      },
+      send: (request, run) => sendTo(entry, request, () => {
+        // The loads, inside the send: a file into the task, or a saved copy; false when cancelled at the stop offer.
+        const withLoad = async (file: string, what: string): Promise<boolean> => vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: `${progress} ${path.basename(file)} into ${taskName} on ${entry.config.name}…`, cancellable: false },
+          async () => (await withStopOffer(what, stop => entry.manager.loadProgram(file, taskName, { stopIfRunning: stop, resetPP: false }), entry)) !== CANCELLED,
+        );
+        return run({ load: () => withLoad(filePath, label), reload: file => withLoad(file, 'Restore module') });
+      }),
+      errorText: e => friendlyErrorMessage(label, e, entry.manager.state),
+      showError: e => showError(label, e, entry),
+      recordBase: (module, text) => recordWithBase(entry, filePath, taskName, module, text),
+    };
+  };
+
+  /** The open editor document of a file, if any: the one whose unsaved changes a load must save first. */
+  const documentOf = (filePath: string): vscode.TextDocument | undefined => {
+    const same = (a: string, b: string): boolean => process.platform === 'win32' ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b);
+    return vscode.workspace.textDocuments.find(d => d.uri.scheme === 'file' && same(d.fileName, filePath));
+  };
+  /** The save-first step before a load from `filePath` (src/pushFlow.ts): false when the load must not go on. */
+  const savedFirst = (filePath: string, label: string): Promise<boolean> =>
+    savedBeforeLoad(documentOf(filePath), label, path.basename(filePath), m => { vscode.window.showWarningMessage(m); });
+
+  /**
+   * Load a module file into one task (Push Current File, Load Program from
+   * File): the preflight, the disruptive confirmation, then the restore point
+   * and the load inside the send (src/pushFlow.ts). The program pointer is not
+   * moved: that is its own ask after the load (src/ppAfterLoad.ts). The text
+   * on success; undefined when nothing was sent, the load was cancelled, or
+   * it failed (then the failure flow ran and said what happened).
+   */
+  const loadModuleFile = (entry: RobotEntry, taskName: string, filePath: string, label: string, progress: string): Promise<{ text: string } | undefined> =>
+    pushModule(pushDepsFor(entry, taskName, filePath, label, progress));
   const watchProvider   = new VariableWatchProvider(multi, context, {
-    confirm, showError,
+    guard: { uiFor: guardUiFor, robotOf: confirmRobotOf }, showError,
     taskFor: module => taskForModule(activeEntry(multi), module, 'Add Variable to Watch'),
   });
   const ctrlSrcProvider = new ControllerSourceProvider(multi);
-  const robotsProvider  = new RobotsTreeProvider(multi, id => motionTracker.allowedHere(id));
+  const robotsProvider  = new RobotsTreeProvider(multi, id => motionTracker.allowedHere(id), id => {
+    const entry = multi.entries.find(e => e.id === id);
+    return entry && entry.manager.state.connected ? modeBadge(modeOf(entry)) : undefined;
+  });
   const cfgProvider     = new CfgTreeProvider(multi);
 
   // Scratch documents opened by "Edit CFG Instance", keyed by document URI.
@@ -1922,6 +2177,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Three status bar items, left-aligned, decreasing priority so they stack
   // in a natural order: connection · op-mode · exec state. When disconnected
   // only the connection pill is visible (linking to "Add Robot").
+  // The active robot's mode, Watch only or Program and operate (src/watchMode.ts); click switches it.
+  const sbWatch = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 103);
   const sbConn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 102);
   const sbMode = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 101);
   const sbExec = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -1931,7 +2188,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   sbConn.tooltip = 'ABB Robot - click to add a robot';
   sbConn.command = 'abbRobot.addRobot';
   sbConn.show();
-  context.subscriptions.push(sbConn, sbMode, sbExec, sbMotion);
+  context.subscriptions.push(sbWatch, sbConn, sbMode, sbExec, sbMotion);
+
+  /** The mode of the active robot on the status bar, and the Robots view rows. */
+  const refreshModeBadge = (): void => {
+    const entry = multi.entries.find(e => e.id === multi.activeId);
+    if (!entry || !entry.manager.state.connected) { sbWatch.hide(); robotsProvider.refresh(); return; }
+    const badge = modeBadge(modeOf(entry));
+    sbWatch.text            = badge.text;
+    sbWatch.tooltip         = badge.tooltip;
+    sbWatch.backgroundColor = badge.warning ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
+    sbWatch.command         = { title: 'Set Robot Mode', command: 'abbRobot.setRobotMode', arguments: [multi.activeId] };
+    sbWatch.show();
+    robotsProvider.refresh();
+  };
 
   // The client's motion-control events: a notice for a robot RAPID Live allowed it on.
   multi.onAccessEvent((id, event) => {
@@ -1996,6 +2266,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       sbExec.backgroundColor = isRunning ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
       sbExec.show();
     }
+    refreshModeBadge();
     vscode.commands.executeCommand('setContext', 'abbRobot.connected', s.connected);
 
     // RobotWare 8 motion control, every robot at once (see statusBarFor): one robot whose
@@ -2112,6 +2383,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await finishAddRobot(multi, context.secrets, selected);
     }),
 
+    // Set Robot Mode: not a controller write (nothing is sent to switch), so outside the wrappers.
+    // Switching to Watch only first gives up what RAPID Live holds on that robot, and says so.
+    tracedCommand('abbRobot.setRobotMode', async (arg?: unknown, targetMode?: unknown) => {
+      // The robot named (a row, the status bar, a refusal's button), else the one the person picks.
+      const given = extractRobotId(arg);
+      const id = given !== undefined && multi.configs.some(c => c.id === given)
+        ? given
+        : await pickSavedRobot(multi, 'Set Robot Mode', 'The robot to switch between Watch only and Program and operate');
+      if (!id) { return; }
+      const target = multi.entries.find(e => e.id === id);
+      if (!target) { return; }
+      // The flow (src/modeFlow.ts): the question, what a switch to Watch only gives up first, the record, the badge.
+      const want = targetMode === 'operate' || targetMode === 'watch' ? targetMode : undefined;
+      await setRobotMode(modeRobotOf(target), want, robotModes, modeUi);
+    }),
+
     tracedCommand('abbRobot.removeRobot', async (arg?: unknown) => {
       // The row's trash button and context menu pass the robot. From the palette (or with
       // anything that is not a saved robot) ask which one: never guess the active robot.
@@ -2149,6 +2436,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               try { await context.globalState.update(LAST_SEEN_KEY, seen); }
               catch (e) { Logger.warn(`could not forget the system of robot ${id}: ${e instanceof Error ? e.message : String(e)}`); }
             }
+            try { await robotModes.forget(id); }
+            catch (e) { Logger.warn(`could not forget the mode of robot ${id}: ${e instanceof Error ? e.message : String(e)}`); }
           },
         });
       } catch (e) {
@@ -2295,15 +2584,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     tracedCommand('abbRobot.startRapid', async () => {
       const entry = activeEntry(multi);
-      const ok = await confirmMotion(entry, {
-        label: 'Start RAPID', tier: 'motion',
+      const tasks = executionTasks(entry, 'Start RAPID');
+      if (!tasks) { return; }
+      await sendMotion(entry, {
+        label: 'Start RAPID', tier: 'motion', taskApplies: true, tasks,
         sideEffects: [
           'Starts the RAPID program from the program pointer; the robot moves as the program says.',
           ...heartbeatSideEffects(entry),
         ],
-      });
-      if (!ok) { return; }
-      await wrap('Starting RAPID…', () => entry.manager.startRapid(), 'RAPID started.', entry);
+      }, () => wrap('Starting RAPID…', () => entry.manager.startRapid(), `✓ RAPID started: ${tasks.join(', ')} on ${entry.config.name}.`, entry));
     }),
 
     // RobotWare 8: allow motion control on the active robot after the person confirms
@@ -2321,17 +2610,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     tracedCommand('abbRobot.stopRapid', async () => {
       const entry = activeEntry(multi);
-      await wrap('Stopping RAPID…', () => entry.manager.stopRapid(), 'RAPID stopped.', entry);
+      await sendReducingTo(entry, { label: 'Stop RAPID' },
+        () => wrap('Stopping RAPID…', () => entry.manager.stopRapid(), `RAPID stopped on ${entry.config.name}.`, entry));
     }),
 
+    // Reset RAPID and PP to Main are the one move (resetRapid takes no task): the
+    // same request, under each command's own label, names every task it moves.
     tracedCommand('abbRobot.resetRapid', async () => {
       const entry = activeEntry(multi);
-      await wrap('Resetting RAPID PP…', () => entry.manager.resetRapid(), 'PP reset.', entry);
+      const tasks = executionTasks(entry, 'Reset RAPID');
+      if (!tasks) { return; }
+      await sendTo(entry, ppToMainRequest(tasks, 'Reset RAPID'),
+        () => wrap('Resetting RAPID PP…', () => entry.manager.resetRapid(), `✓ PP reset to main: ${tasks.join(', ')} on ${entry.config.name}.`, entry));
     }),
 
     tracedCommand('abbRobot.ppToMain', async () => {
       const entry = activeEntry(multi);
-      await wrap('Moving PP to Main…', () => entry.manager.resetRapid(), '✓ PP moved to Main.', entry);
+      const tasks = executionTasks(entry, 'PP to Main');
+      if (!tasks) { return; }
+      await sendTo(entry, ppToMainRequest(tasks),
+        () => wrap('Moving PP to Main…', () => entry.manager.resetRapid(), `✓ PP moved to main: ${tasks.join(', ')} on ${entry.config.name}.`, entry));
     }),
 
     tracedCommand('abbRobot.refresh', () => { activeEntry(multi).manager.refresh().catch(() => {}); }),
@@ -2344,86 +2642,104 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         { label: 'As Is',   value: 'asis'    as const, description: 'Keep current setting' },
       ], { title: 'Set Execution Cycle' });
       if (!choice) { return; }
-      try { await entry.manager.setExecutionCycle(choice.value); vscode.window.showInformationMessage(`Cycle: ${choice.label}`); }
-      catch (e: unknown) { showError('Set cycle', e, entry); }
+      try {
+        const out = await sendTo(entry, {
+          label: 'Set Execution Cycle', tier: 'change', taskApplies: false,
+          sideEffects: [`Sets the execution cycle to ${choice.label}: ${choice.description}. The next start runs that way.`],
+        }, () => entry.manager.setExecutionCycle(choice.value));
+        if (out.sent) { vscode.window.showInformationMessage(`✓ Cycle: ${choice.label} on ${entry.config.name}.`); }
+      } catch (e: unknown) { showError('Set cycle', e, entry); }
     }),
 
     // ─── Motors & speed ──────────────────────────────────────────────────────
 
+    // Through sendMotion, as Start and Jog: on RobotWare 8 the dialog carries the
+    // motion-control line and the Allow Motion Control button.
     tracedCommand('abbRobot.motorsOn', async () => {
       const entry = activeEntry(multi);
-      const ok = await confirm(entry, {
-        label: 'Motors On', tier: 'motion',
-        sideEffects: ['Turns the motors on; the robot can move as soon as RAPID starts or a jog is sent.'],
-      });
-      if (!ok) { return; }
-      try { await entry.manager.setMotorsOn(); vscode.window.showInformationMessage('Motors ON.'); }
-      catch (e: unknown) { showError('Motors On', e, entry); }
+      try {
+        const out = await sendMotion(entry, {
+          label: 'Motors On', tier: 'motion', taskApplies: false,
+          sideEffects: ['Turns the motors on; the robot can move as soon as RAPID starts or a jog is sent.'],
+        }, () => entry.manager.setMotorsOn());
+        if (out.sent) { vscode.window.showInformationMessage(`Motors ON on ${entry.config.name}.`); }
+      } catch (e: unknown) { showError('Motors On', e, entry); }
     }),
 
     tracedCommand('abbRobot.motorsOff', async () => {
       const entry = activeEntry(multi);
-      try { await entry.manager.setMotorsOff(); vscode.window.showInformationMessage('Motors OFF.'); }
-      catch (e: unknown) { showError('Motors Off', e, entry); }
+      try {
+        const out = await sendReducingTo(entry, { label: 'Motors Off' }, () => entry.manager.setMotorsOff());
+        if (out.sent) { vscode.window.showInformationMessage(`Motors OFF on ${entry.config.name}.`); }
+      } catch (e: unknown) { showError('Motors Off', e, entry); }
     }),
 
     tracedCommand('abbRobot.setSpeedRatio', async () => {
       const entry = activeEntry(multi);
-      const current = entry.manager.state.speedRatio ?? 100;
+      // Null until the ratio is read: the box starts empty and the dialog says the value is unread (src/confirm.ts).
+      const current = entry.manager.state.speedRatio;
       const input = await vscode.window.showInputBox({
-        title: 'Set Speed Ratio', prompt: '0-100 (AUTO mode only)', value: String(current),
+        title: 'Set Speed Ratio', prompt: current === null ? '0-100 (AUTO mode only). The current ratio is not read.' : '0-100 (AUTO mode only)',
+        ...(current === null ? {} : { value: String(current) }),
         validateInput: v => { const n = +v; return (isNaN(n) || n < 0 || n > 100) ? 'Must be 0-100' : undefined; },
       });
       if (input === undefined) { return; }
-      if (!await confirm(entry, speedRatioRequest(current, +input, isRapidRunning(entry.manager.state.execstate)))) { return; }
-      try { await entry.manager.setSpeedRatio(+input); vscode.window.showInformationMessage(`Speed ratio: ${input}%`); }
-      catch (e: unknown) { showError('Set speed ratio', e, entry); }
+      try {
+        const out = await sendTo(entry, speedRatioRequest(current, +input, isRapidRunning(entry.manager.state.execstate)), () => entry.manager.setSpeedRatio(+input));
+        if (out.sent) { vscode.window.showInformationMessage(`Speed ratio: ${input}% on ${entry.config.name}`); }
+      } catch (e: unknown) { showError('Set speed ratio', e, entry); }
     }),
 
     // ─── Simulation panel (virtual controllers only) ─────────────────────────
 
     tracedCommand('abbRobot.simEStop', async () => {
       const entry = activeEntry(multi);
-      if (!await confirm(entry, virtualOnlyRequest('Simulate E-Stop', ['Engages a simulated emergency stop: the motors drop and RAPID stops.']))) { return; }
-      try { await entry.manager.simEmergencyStop(); vscode.window.showWarningMessage('Simulated E-Stop engaged. Use "Reset Simulated E-Stop" to release.'); }
-      catch (e: unknown) { showError('Simulate E-Stop', e, entry); }
+      try {
+        const out = await sendTo(entry, virtualOnlyRequest('Simulate E-Stop', ['Engages a simulated emergency stop: the motors drop and RAPID stops.']), () => entry.manager.simEmergencyStop());
+        if (out.sent) { vscode.window.showWarningMessage(`Simulated E-Stop engaged on ${entry.config.name}. Use "Reset Simulated E-Stop" to release.`); }
+      } catch (e: unknown) { showError('Simulate E-Stop', e, entry); }
     }),
 
     tracedCommand('abbRobot.simResetEStop', async () => {
       const entry = activeEntry(multi);
-      if (!await confirm(entry, virtualOnlyRequest('Reset simulated E-Stop', ['Releases the simulated emergency stop.']))) { return; }
-      try { await entry.manager.simResetEmergencyStop(); vscode.window.showInformationMessage('Simulated E-Stop released.'); }
-      catch (e: unknown) { showError('Reset simulated E-Stop', e, entry); }
+      try {
+        const out = await sendTo(entry, virtualOnlyRequest('Reset simulated E-Stop', ['Releases the simulated emergency stop.']), () => entry.manager.simResetEmergencyStop());
+        if (out.sent) { vscode.window.showInformationMessage(`Simulated E-Stop released on ${entry.config.name}.`); }
+      } catch (e: unknown) { showError('Reset simulated E-Stop', e, entry); }
     }),
 
     tracedCommand('abbRobot.simGeneralStop', async () => {
       const entry = activeEntry(multi);
       const engaged = entry.manager.state.ctrlstate === 'guardstop';
-      if (!await confirm(entry, virtualOnlyRequest(`Simulate general stop (${engaged ? 'release' : 'engage'})`, [`${engaged ? 'Releases' : 'Engages'} a simulated general stop.`]))) { return; }
-      try { await entry.manager.simGeneralStop(!engaged); vscode.window.showInformationMessage(`Simulated general stop ${engaged ? 'released' : 'engaged'}.`); }
-      catch (e: unknown) { showError('Simulate general stop', e, entry); }
+      try {
+        const out = await sendTo(entry, virtualOnlyRequest(`Simulate general stop (${engaged ? 'release' : 'engage'})`, [`${engaged ? 'Releases' : 'Engages'} a simulated general stop.`]), () => entry.manager.simGeneralStop(!engaged));
+        if (out.sent) { vscode.window.showInformationMessage(`Simulated general stop ${engaged ? 'released' : 'engaged'} on ${entry.config.name}.`); }
+      } catch (e: unknown) { showError('Simulate general stop', e, entry); }
     }),
 
     tracedCommand('abbRobot.simAutoStop', async () => {
       const entry = activeEntry(multi);
       const engaged = entry.manager.state.ctrlstate === 'guardstop';
-      if (!await confirm(entry, virtualOnlyRequest(`Simulate auto stop (${engaged ? 'release' : 'engage'})`, [`${engaged ? 'Releases' : 'Engages'} a simulated auto stop.`]))) { return; }
-      try { await entry.manager.simAutoStop(!engaged); vscode.window.showInformationMessage(`Simulated auto stop ${engaged ? 'released' : 'engaged'}.`); }
-      catch (e: unknown) { showError('Simulate auto stop', e, entry); }
+      try {
+        const out = await sendTo(entry, virtualOnlyRequest(`Simulate auto stop (${engaged ? 'release' : 'engage'})`, [`${engaged ? 'Releases' : 'Engages'} a simulated auto stop.`]), () => entry.manager.simAutoStop(!engaged));
+        if (out.sent) { vscode.window.showInformationMessage(`Simulated auto stop ${engaged ? 'released' : 'engaged'} on ${entry.config.name}.`); }
+      } catch (e: unknown) { showError('Simulate auto stop', e, entry); }
     }),
 
     tracedCommand('abbRobot.simEnableSwitch', async () => {
       const entry = activeEntry(multi);
       const pick = await vscode.window.showQuickPick(['Press (on)', 'Release (off)'], { title: 'Simulate Enable Switch' });
       if (pick === undefined) { return; }
-      if (!await confirm(entry, virtualOnlyRequest(`Simulate enable switch (${pick.startsWith('Press') ? 'press' : 'release'})`, ['Presses or releases the simulated enable switch; a pressed one lets manual motion run.']))) { return; }
-      try { await entry.manager.simEnableSwitch(pick.startsWith('Press')); vscode.window.showInformationMessage(`Simulated enable switch ${pick.startsWith('Press') ? 'pressed' : 'released'}.`); }
-      catch (e: unknown) { showError('Simulate enable switch', e, entry); }
+      try {
+        const out = await sendTo(entry, virtualOnlyRequest(`Simulate enable switch (${pick.startsWith('Press') ? 'press' : 'release'})`, ['Presses or releases the simulated enable switch; a pressed one lets manual motion run.']), () => entry.manager.simEnableSwitch(pick.startsWith('Press')));
+        if (out.sent) { vscode.window.showInformationMessage(`Simulated enable switch ${pick.startsWith('Press') ? 'pressed' : 'released'} on ${entry.config.name}.`); }
+      } catch (e: unknown) { showError('Simulate enable switch', e, entry); }
     }),
 
     tracedCommand('abbRobot.teleportRobot', async () => {
       const entry = activeEntry(multi);
-      const mechunit = entry.manager.state.mechunits[0] ?? 'ROB_1';
+      const mechunit = await mechunitFor(entry, 'Teleport Robot');
+      if (!mechunit) { return; }
       const current = entry.manager.state.joints;
       const seed = current ? [current.rax_1, current.rax_2, current.rax_3, current.rax_4, current.rax_5, current.rax_6].join(', ') : '0, 0, 0, 0, 0, 0';
       const input = await vscode.window.showInputBox({
@@ -2438,9 +2754,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       });
       if (input === undefined) { return; }
       const joints = input.split(',').map(s => +s.trim());
-      if (!await confirm(entry, virtualOnlyRequest(`Teleport ${mechunit}`, [`Moves ${mechunit} at once to joints [${joints.join(', ')}], without a motion.`]))) { return; }
-      try { await entry.manager.teleportMechunit(mechunit, joints); vscode.window.showInformationMessage(`Teleported ${mechunit} to [${joints.join(', ')}].`); }
-      catch (e: unknown) { showError('Teleport robot', e, entry); }
+      try {
+        const out = await sendTo(entry, virtualOnlyRequest(`Teleport ${mechunit}`, [`Moves ${mechunit} at once to joints [${joints.join(', ')}], without a motion.`]),
+          () => entry.manager.teleportMechunit(mechunit, joints));
+        if (out.sent) { vscode.window.showInformationMessage(`Teleported ${mechunit} to [${joints.join(', ')}] on ${entry.config.name}.`); }
+      } catch (e: unknown) { showError('Teleport robot', e, entry); }
     }),
 
     // ─── Jogging ─────────────────────────────────────────────────────────────
@@ -2448,27 +2766,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tracedCommand('abbRobot.jog', async (axisIndex: number, direction: 1 | -1) => {
       const entry = activeEntry(multi);
       if (!entry.manager.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
+      // The unit the jog is sent to (src/mechunitResolver.ts): the client selects it for jogging first when the controller has another one selected.
+      const mechunit = await mechunitFor(entry, 'Jog');
+      if (!mechunit) { return; }
       const cfg   = vscode.workspace.getConfiguration('abbRobot');
       const inc   = cfg.get<number>('jog.increment', 1);
       const speed = cfg.get<number>('jog.speed', 10);
       const mode  = cfg.get<string>('jog.mode', 'Joint') as 'Joint' | 'Cartesian';
 
-      // The typed-name confirmation, once per robot and connection (the map
-      // forgets a robot when it disconnects).
-      if (jogNeedsAsk(jogConfirmed.get(entry.id), inc)) {
-        const ok = await confirmMotion(entry, {
-          label: 'Jog', tier: 'motion',
-          sideEffects: jogConfirmEffects(inc),
-        });
-        if (!ok) { return; }
-        jogConfirmed.set(entry.id, inc);
-      }
-
       const axes: [number, number, number, number, number, number] = [0, 0, 0, 0, 0, 0];
       axes[axisIndex] = direction * inc;
 
+      // The typed-name confirmation, once per robot and connection (the map
+      // forgets a robot when it disconnects): a repeat jog to the same unit
+      // with the same labels, at this increment or a lower one, skips the
+      // dialog, and only the dialog.
+      const now: JogConfirmed = { value: inc, unit: mechunit, labels: mode };
+      const ask = jogNeedsAsk(jogConfirmed.get(entry.id), now);
+      const request: ConfirmRequest = { label: 'Jog', tier: 'motion', taskApplies: false, sideEffects: jogConfirmEffects(inc, mechunit, mode) };
       try {
-        await entry.manager.jog({ mode, axes, speed });
+        const out = await sendMotion(entry, ask ? request : { ...request, skipAsk: 'jog-repeat' }, () => entry.manager.jog({ mode, axes, speed, mechunit }));
+        if (out.sent && ask) { jogConfirmed.set(entry.id, now); }
       } catch (e: unknown) {
         // Refused for motion control: the next jog asks again, with the motion-control line.
         if (refusalOf(e)?.kind === 'motion-control-off') { jogConfirmed.delete(entry.id); }
@@ -2660,8 +2978,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const gen = generationOf(entry.manager.state);
         const action = await vscode.window.showInformationMessage(virtualTimeNotice(vt, gen), ...virtualTimeActionsFor(gen));
         if (action === undefined) { return; }
-        if (!await confirm(entry, virtualOnlyRequest(action, ['Changes how fast the virtual clock runs, and with it every program and motion on the virtual controller.']))) { return; }
-        await runVirtualTimeAction(m, action, gen);
+        // Nothing to send for an action that is not a speed action, or on RobotWare 6.
+        const scale = virtualTimeScaleFor(action, gen);
+        if (scale === undefined) { return; }
+        await sendTo(entry, virtualOnlyRequest(action, ['Changes how fast the virtual clock runs, and with it every program and motion on the virtual controller.']),
+          () => m.setVirtualTimeScale(scale));
       } catch (e) { showError('Virtual time', e, entry); }
     }),
 
@@ -2670,7 +2991,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!entry.manager.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
       try {
         const m = entry.manager;
-        const mu = (entry.manager.state.mechunits[0]) ?? 'ROB_1';
+        const mu = await mechunitFor(entry, 'Show Mechunit Details');
+        if (!mu) { return; }
         const [info, base, axes] = await Promise.all([
           m.getMechunitInfo(mu), m.getMechunitBaseFrame(mu), m.getMechunitAxes(mu),
         ]);
@@ -2743,16 +3065,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         { title: 'Lock type', placeHolder: 'Temporary or permanent lock?' }
       );
       if (!perm) { return; }
-      const ok = await confirm(entry, {
-        label: 'Lock Operation Mode', tier: 'disruptive',
-        sideEffects: [
-          `Locks the operation mode selector ${perm.value ? 'permanently' : 'temporarily'} with this PIN.`,
-          'The mode cannot be changed until the selector is unlocked with the same PIN.',
-        ],
-      });
-      if (!ok) { return; }
-      try { await entry.manager.lockOperationMode(pin, perm.value); vscode.window.showInformationMessage('Operation mode locked.'); }
-      catch (e: unknown) { showError('Lock op mode', e, entry); }
+      try {
+        const out = await sendTo(entry, {
+          label: 'Lock Operation Mode', tier: 'disruptive', taskApplies: false,
+          sideEffects: [
+            `Locks the operation mode selector ${perm.value ? 'permanently' : 'temporarily'} with this PIN.`,
+            'The mode cannot be changed until the selector is unlocked with the same PIN.',
+          ],
+        }, () => entry.manager.lockOperationMode(pin, perm.value));
+        if (out.sent) { vscode.window.showInformationMessage(`Operation mode locked on ${entry.config.name}.`); }
+      } catch (e: unknown) { showError('Lock op mode', e, entry); }
     }),
 
     tracedCommand('abbRobot.unlockOpMode', async () => {
@@ -2761,13 +3083,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // 7.21.4, 8.2.1); the client refuses a call without one.
       const pin = await vscode.window.showInputBox({ title: 'Unlock Operation Mode', prompt: 'The 4-digit PIN the lock was set with', validateInput: v => v.length === 4 ? undefined : 'PIN must be 4 digits' });
       if (!pin) { return; }
-      const ok = await confirm(entry, {
-        label: 'Unlock Operation Mode', tier: 'disruptive',
-        sideEffects: ['Unlocks the operation mode selector; the mode can be changed again.'],
-      });
-      if (!ok) { return; }
-      try { await entry.manager.unlockOperationMode(pin); vscode.window.showInformationMessage('Operation mode unlocked.'); }
-      catch (e: unknown) { showError('Unlock op mode', e, entry); }
+      try {
+        const out = await sendTo(entry, {
+          label: 'Unlock Operation Mode', tier: 'disruptive', taskApplies: false,
+          sideEffects: ['Unlocks the operation mode selector; the mode can be changed again.'],
+        }, () => entry.manager.unlockOperationMode(pin));
+        if (out.sent) { vscode.window.showInformationMessage(`Operation mode unlocked on ${entry.config.name}.`); }
+      } catch (e: unknown) { showError('Unlock op mode', e, entry); }
     }),
 
     tracedCommand('abbRobot.setOpMode', async () => {
@@ -2798,13 +3120,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
 
-      if (!await confirm(entry, opModeRequest(current, pick.label))) { return; }
       try {
-        await vscode.window.withProgress(
-          { location: vscode.ProgressLocation.Notification, title: `Switching to ${pick.label}…`, cancellable: false },
+        const out = await sendTo(entry, opModeRequest(current, pick.label), () => vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: `Switching ${entry.config.name} to ${pick.label}…`, cancellable: false },
           async () => entry.manager.setOperationMode(pick.label as 'AUTO' | 'MANR' | 'MANF'),
-        );
-        vscode.window.showInformationMessage(`✓ Requested ${pick.label}. Check the FlexPendant simulator - the actual switch may require tapping Accept on a confirmation popup.`);
+        ));
+        if (!out.sent) { return; }
+        vscode.window.showInformationMessage(`✓ Requested ${pick.label} on ${entry.config.name}. Check the FlexPendant simulator - the actual switch may require tapping Accept on a confirmation popup.`);
       } catch (e: unknown) {
         const raw = e instanceof Error ? e.message : String(e);
         if (/timeout/i.test(raw)) {
@@ -2852,8 +3174,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!symbol) { return; }
       const value  = await vscode.window.showInputBox({ title: 'Write Variable (4/4)', prompt: 'Value (RAPID syntax)' });
       if (value === undefined) { return; }
-      try { await entry.manager.setRapidVariable(task, module, symbol, value); vscode.window.showInformationMessage(`${symbol} = ${value}`); }
-      catch (e: unknown) { showError('Write variable', e, entry); }
+      try {
+        const out = await sendTo(entry, {
+          label: `Write ${module}.${symbol}`, tier: 'change', taskApplies: true, task,
+          sideEffects: [`Sets ${task}/${module}/${symbol} to ${value}. A running program sees the new value at once.`],
+        }, () => entry.manager.setRapidVariable(task, module, symbol, value));
+        if (out.sent) { vscode.window.showInformationMessage(`✓ ${module}.${symbol} = ${value} in ${task} on ${entry.config.name}`); }
+      } catch (e: unknown) { showError('Write variable', e, entry); }
     }),
 
     tracedCommand('abbRobot.readSymbolProperties', async () => {
@@ -2902,25 +3229,54 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (value === undefined) { return; }
         // The answer lets the waiting RAPID instruction go on, so the program
         // continues from there: a motion-tier write.
-        const ok = await confirm(entry, {
-          label: 'Answer UI instruction', tier: 'motion',
-          sideEffects: [
-            `Sends ${uiparam} = ${value} to the ${instr.instr} instruction waiting in the program; the program continues and the robot moves as it says.`,
-            ...(uiparam === 'TPAnswer' ? [`Then sends TPCompleted = TRUE, which ends the wait.`] : []),
-          ],
-        });
-        if (!ok) { return; }
         try {
-          await entry.manager.setUiInstructionParam(instr.stack, uiparam, value);
-          // The client documents the answer as TPAnswer, then TPCompleted = TRUE (RW 6.16.03, 2026-10-13).
-          if (uiparam === 'TPAnswer') { await entry.manager.setUiInstructionParam(instr.stack, 'TPCompleted', 'TRUE'); }
-          vscode.window.showInformationMessage('✓ UI instruction responded.');
+          const out = await sendTo(entry, {
+            label: 'Answer UI instruction', tier: 'motion', taskApplies: false,
+            sideEffects: [
+              `Sends ${uiparam} = ${value} to the ${instr.instr} instruction waiting in the program; the program continues and the robot moves as it says.`,
+              ...(uiparam === 'TPAnswer' ? [`Then sends TPCompleted = TRUE, which ends the wait.`] : []),
+            ],
+          }, async () => {
+            await entry.manager.setUiInstructionParam(instr.stack, uiparam, value);
+            // The client documents the answer as TPAnswer, then TPCompleted = TRUE (RW 6.16.03, 2026-10-13).
+            if (uiparam === 'TPAnswer') { await entry.manager.setUiInstructionParam(instr.stack, 'TPCompleted', 'TRUE'); }
+          });
+          if (out.sent) { vscode.window.showInformationMessage(`✓ UI instruction responded on ${entry.config.name}.`); }
         }
         catch (e2: unknown) { showError('Respond to UI instruction', e2, entry); }
       } catch (e: unknown) { showError('Get UI instruction', e, entry); }
     }),
 
     // ─── Module management ───────────────────────────────────────────────────
+
+    tracedCommand('abbRobot.restoreModule', async () => {
+      const entry = activeEntry(multi);
+      if (!entry.manager.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
+      const points = restorePointsOf(entry);
+      if (points.length === 0) { vscode.window.showInformationMessage(`No restore point is saved for ${entry.config.name}. RAPID Live saves the controller's copy of a module before Push or Load replaces it.`); return; }
+      const pick = await vscode.window.showQuickPick(points.map(meta => ({
+        label: `${meta.module} in ${meta.task}`,
+        description: whenText(meta.at),
+        detail: `${meta.reason}${meta.nonAscii ? ' (contains non-ASCII characters; cannot be reloaded by RAPID Live yet)' : ''}`,
+        meta,
+      })), { title: `Restore Module from Restore Point on ${entry.config.name}`, placeHolder: 'The saved copy to load back' });
+      if (!pick) { return; }
+      const meta = pick.meta;
+      if (meta.nonAscii) { vscode.window.showWarningMessage(`${meta.module} is not reloaded: the saved copy contains non-ASCII characters, which RAPID Live does not send yet. It is at ${meta.file}.`); return; }
+      // The deps are built on the saved copy's file: the module loaded now is saved first, inside the send (src/pushFlow.ts).
+      const deps = pushDepsFor(entry, meta.task, meta.file, `Restore module ${meta.module}`, 'Restoring');
+      try {
+        const out = await deps.send({
+          label: `Restore module ${meta.module}`, tier: 'disruptive', taskApplies: true, task: meta.task,
+          sideEffects: [
+            `Loads ${meta.file}, the controller's copy as of ${whenText(meta.at)}, into ${meta.task}. A module of that name loaded there is replaced, after it is saved as a restore point of its own.`,
+            'The program pointer is not moved.',
+          ],
+        }, ops => restoreInsideSend(deps, meta.module, ops));
+        if (!out.sent || out.value !== 'done') { return; }
+        vscode.window.showInformationMessage(`✓ ${meta.module} restored into ${meta.task} on ${entry.config.name} from the copy of ${whenText(meta.at)}.`);
+      } catch (e: unknown) { showError('Restore module', e, entry); }
+    }),
 
     tracedCommand('abbRobot.uploadModule', async () => {
       const entry = activeEntry(multi);
@@ -2929,34 +3285,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!uris?.length) { return; }
       const localPath = uris[0].fsPath;
       const fileName  = require('path').basename(localPath);
+      if (!(await savedFirst(localPath, 'Load Program from File'))) { return; }
       const text = readText(localPath);
       const taskName = await taskForModule(entry, moduleOfFile(localPath, text), 'Load Program from File', origins.taskOf(localPath));
       if (!taskName) { return; }
       const where = `${taskName} on ${entry.config.name}`;
-      const loaded = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Loading ${fileName} into ${where}…` }, async () => {
-        try {
-          // A failed step fails the call; its message says which step and
-          // what was already done. The program pointer is not moved here:
-          // that is its own ask below (src/ppAfterLoad.ts).
-          const r = await withStopOffer('Load module', stop => entry.manager.loadProgram(localPath, taskName, { stopIfRunning: stop, resetPP: false }), entry);
-          return r !== CANCELLED;
-        } catch (e: unknown) {
-          showError('Load module', e, entry);
-          return false;
-        }
-      });
-      if (!loaded) { return; }
-      if (text !== undefined) { await origins.record(localPath, taskName, text, entry.id); }
-      offerPPToMain(entry, text ?? '', `✓ ${fileName} loaded into ${where}.`);
+      try {
+        // A failed step fails the call; its message says which step and what
+        // was already done. The program pointer is not moved by the load: that
+        // is its own ask after it (src/ppAfterLoad.ts).
+        const loaded = await loadModuleFile(entry, taskName, localPath, 'Load Program from File', 'Loading');
+        if (!loaded) { return; }
+        offerPPToMain(entry, loaded.text ?? '', `✓ ${fileName} loaded into ${where}.`);
+      } catch (e: unknown) { showError('Load module', e, entry); }
     }),
 
     // Invoked by the CodeLens "▶ Set PP here" above each routine in a .mod file.
     // Args are pre-resolved: (moduleName, routineName, kind).
     tracedCommand('abbRobot.setPPFromCodeLens', async (
-      moduleName?: unknown, routineName?: unknown, _kind?: unknown, lensFile?: unknown,
+      moduleName?: unknown, routineName?: unknown, _kind?: unknown, lensFile?: unknown, taskArg?: unknown,
     ) => {
-      // The lens's own document, read before any prompt: the active editor can change while one is open.
-      const lensPath = typeof lensFile === 'string' && lensFile ? lensFile : vscode.window.activeTextEditor?.document.fileName;
+      // The Program view's row passes its task and no file: that task is the one, and the editor's file is not consulted.
+      const explicitTask = typeof taskArg === 'string' && taskArg ? taskArg : undefined;
+      // Otherwise the lens's own document, read before any prompt: the active editor can change while one is open.
+      const lensPath = typeof lensFile === 'string' && lensFile ? lensFile : explicitTask ? undefined : vscode.window.activeTextEditor?.document.fileName;
       const entry = activeEntry(multi);
       if (typeof moduleName !== 'string' || typeof routineName !== 'string') {
         vscode.window.showWarningMessage('Set PP from CodeLens: missing arguments.');
@@ -2967,49 +3319,64 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       const active = entry.manager;
-      const taskName = await taskForModule(entry, moduleName, 'Set PP', origins.taskOf(lensPath));
+      const taskName = explicitTask ? await taskFor(entry, 'Set PP', { explicit: explicitTask, module: moduleName }) : await taskForModule(entry, moduleName, 'Set PP', origins.taskOf(lensPath));
       if (!taskName) { return; }
 
-      // If the module isn't loaded on the controller, offer to load THIS file first
-      if (!isModuleLoaded(active.state, moduleName)) {
-        const filePath = lensPath;
-        const choice = await vscode.window.showWarningMessage(
-          `Module "${moduleName}" isn't loaded in ${taskName} on ${robotLabel(confirmRobotOf(entry))} yet.`,
-          { modal: false },
-          'Load this file first', 'Cancel',
-        );
-        if (choice !== 'Load this file first' || !filePath) { return; }
-        try {
-          // resetPP false: the pointer goes to the routine below, in this task only.
-          if (await withStopOffer('Load module', stop => active.loadProgram(filePath, taskName, { stopIfRunning: stop, resetPP: false }), entry) === CANCELLED) { return; }
-          await recordPushed(entry, filePath, taskName);
-        } catch (e) { showError('Load module', e, entry); return; }
+      // One request for the click: disruptive when the module must be loaded
+      // from this file first, a change when it is loaded already.
+      const needsLoad = !isModuleLoaded(active.state, moduleName);
+      const filePath = lensPath;
+      if (needsLoad && !filePath) {
+        vscode.window.showWarningMessage(`Module "${moduleName}" is not loaded in ${taskName} on ${robotLabel(confirmRobotOf(entry))}, and there is no file to load it from. Load it from the Modules panel, then click ▶ again.`);
+        return;
       }
-
-      try {
-        if (await withStopOffer('Set PP', stop => active.setPPToRoutine(taskName, moduleName, routineName, { stopIfRunning: stop }), entry) === CANCELLED) { return; }
-        vscode.window.setStatusBarMessage(`✓ PP set to ${moduleName}.${routineName} in ${taskName} on ${entry.config.name}`, 3000);
-      } catch (e) {
-        // Auto-recover from `main` collisions: if Set-PP fails with the
-        // Semantic-error code, check if multiple loaded modules have a
-        // `main` proc and offer to unload the conflicting one.
-        if (await tryResolveMainCollision(active, taskName, moduleName, e, entry)) {
-          // Retry once after the user resolves the collision
-          try {
-            await active.setPPToRoutine(taskName, moduleName, routineName);
-            vscode.window.setStatusBarMessage(`✓ PP set to ${moduleName}.${routineName} in ${taskName} on ${entry.config.name}`, 3000);
-            return;
-          } catch (e2) { showError('Set PP', e2, entry); return; }
+      // The editor's unsaved changes first: the routine the lens names must be in the file loaded.
+      if (needsLoad && filePath && !(await savedFirst(filePath, 'Set PP'))) { return; }
+      // The file's preflight (its bytes, the controller's copy, the restore point) before the dialog; it sends nothing.
+      const lensDeps = needsLoad && filePath ? pushDepsFor(entry, taskName, filePath, 'Set PP') : undefined;
+      const pre = lensDeps ? await preflight(lensDeps) : undefined;
+      if (needsLoad && !pre) { return; }
+      const running = isRapidRunning(active.state.execstate);
+      const request: ConfirmRequest = pre && filePath
+        ? {
+          label: 'Set PP', tier: 'disruptive', taskApplies: true, task: taskName,
+          sideEffects: [
+            ...(running ? ['RAPID is running.'] : []),
+            ...loadBullets(pre, taskName).slice(0, -1),
+            `Then moves the program pointer of ${taskName} to ${moduleName}.${routineName}.`,
+          ],
         }
-        showError('Set PP', e, entry);
-      }
+        : programChangeRequest('Set PP', running, 'change', [`Moves the program pointer of ${taskName} to ${moduleName}.${routineName}.`], taskName);
+      try {
+        const out = await sendTo(entry, request, async () => {
+          if (pre && lensDeps && filePath) {
+            // resetPP false: the pointer goes to the routine below, in this task only. The restore point, the load and the failure flow: src/pushFlow.ts.
+            const step = await loadInsideSend(lensDeps, pre, {
+              load: async () => (await withStopOffer('Load module', stop => active.loadProgram(filePath, taskName, { stopIfRunning: stop, resetPP: false }), entry)) !== CANCELLED,
+              reload: async file => (await withStopOffer('Restore module', stop => active.loadProgram(file, taskName, { stopIfRunning: stop, resetPP: false }), entry)) !== CANCELLED,
+            });
+            if (step !== 'done') { return step; }
+          }
+          try {
+            if (await withStopOffer('Set PP', stop => active.setPPToRoutine(taskName, moduleName, routineName, { stopIfRunning: stop }), entry) === CANCELLED) { return 'cancelled' as const; }
+          } catch (e) {
+            // A `main` collision (the controller's semantic error): offer to unload
+            // the other module that declares main, behind its own ask, then retry once.
+            if (!(await tryResolveMainCollision(active, taskName, moduleName, e, entry, [], mod => withStopOffer(`Unload ${mod}`, stop => active.unloadModule(taskName, mod, { stopIfRunning: stop }), entry)))) { throw e; }
+            await active.setPPToRoutine(taskName, moduleName, routineName);
+          }
+          return 'done' as const;
+        });
+        if (!out.sent || out.value !== 'done') { return; }
+        vscode.window.setStatusBarMessage(`✓ PP set to ${moduleName}.${routineName} in ${taskName} on ${entry.config.name}`, 3000);
+      } catch (e) { showError('Set PP', e, entry); }
     }),
 
     // Invoked by the CodeLens "▶ Run this routine" above each routine.
     // Sets PP to the routine then starts execution in one click. Auto-loads
     // the module if not present, and turns motors on if needed (in AUTO).
     tracedCommand('abbRobot.runRoutineFromCodeLens', async (
-      moduleName?: unknown, routineName?: unknown, _kind?: unknown, lensFile?: unknown,
+      moduleName?: unknown, routineName?: unknown, _kind?: unknown, lensFile?: unknown, taskArg?: unknown,
     ) => {
       if (typeof moduleName !== 'string' || typeof routineName !== 'string') {
         vscode.window.showWarningMessage('Run routine from CodeLens: missing arguments.');
@@ -3021,8 +3388,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showWarningMessage('Connect to a robot first, then click ▶ again.');
         return;
       }
-      const lensPath = typeof lensFile === 'string' && lensFile ? lensFile : vscode.window.activeTextEditor?.document.fileName;
-      const taskName = await taskForModule(entry, moduleName, 'Run routine', origins.taskOf(lensPath));
+      // The Program view's row passes its task and no file: that task is the one, and the editor's file is not consulted.
+      const explicitTask = typeof taskArg === 'string' && taskArg ? taskArg : undefined;
+      const lensPath = typeof lensFile === 'string' && lensFile ? lensFile : explicitTask ? undefined : vscode.window.activeTextEditor?.document.fileName;
+      const taskName = explicitTask ? await taskFor(entry, 'Run routine', { explicit: explicitTask, module: moduleName }) : await taskForModule(entry, moduleName, 'Run routine', origins.taskOf(lensPath));
       if (!taskName) { return; }
 
       // One typed confirmation covers everything the click does: the load,
@@ -3034,54 +3403,63 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showWarningMessage(`No active editor with file path. Load ${moduleName} via the Modules panel and retry.`);
         return;
       }
+      // The editor's unsaved changes first: the routine the lens names must be in the file loaded.
+      if (needsLoad && filePath && !(await savedFirst(filePath, 'Run routine'))) { return; }
+      // The file's preflight (its bytes, the controller's copy, the restore point) before the dialog; it sends nothing.
+      const runDeps = needsLoad && filePath ? pushDepsFor(entry, taskName, filePath, 'Run routine') : undefined;
+      const pre = runDeps ? await preflight(runDeps) : undefined;
+      if (needsLoad && !pre) { return; }
       const needsMotors = active.state.opmode === 'AUTO' && active.state.ctrlstate !== 'motoron';
       // Reads before the dialog: which other loaded modules define main. If the
       // controller refuses the pointer move because two do, exactly these are
       // the ones that can be unloaded, and the dialog says so.
       const mainHolders = (await modulesWithMain(active, taskName)).filter(m => m !== moduleName);
-      const ok = await confirmMotion(entry, {
-        label: `Run ${moduleName}.${routineName}`, tier: 'motion',
-        sideEffects: [
-          ...(needsLoad ? [`Loads ${moduleName} from the open file into task ${taskName}.`] : []),
-          `Sets the program pointer of ${taskName} to ${moduleName}.${routineName}.`,
-          ...(mainHolders.length ? [`Unloads ${mainHolders.join(' or ')} if the controller refuses the pointer move because it also declares PROC main().`] : []),
-          ...(needsMotors ? [`Turns the motors on (they are ${active.state.ctrlstate ?? 'off'}).`] : []),
-          'Starts RAPID there; the robot moves as the routine says.',
-          ...heartbeatSideEffects(entry),
-        ],
-      });
-      if (!ok) { return; }
-
-      // If module isn't loaded, load THIS file
-      if (needsLoad && filePath) {
-        try {
-          // resetPP false: the pointer goes to the routine below, in this task only.
-          if (await withStopOffer('Load module', stop => active.loadProgram(filePath, taskName, { stopIfRunning: stop, resetPP: false }), entry) === CANCELLED) { return; }
-          await recordPushed(entry, filePath, taskName);
-        } catch (e) { showError('Load module', e, entry); return; }
-      }
-
+      // The start takes no task: every other active task runs too, from its own pointer, and the dialog says so.
+      const otherActive = activeTasks(active.state).filter(t => t !== taskName);
       try {
-        // Set PP at the chosen routine - with auto-recovery on `main` collision.
-        // The client no longer stops a running program on its own: the user
-        // is asked first.
-        try {
-          if (await withStopOffer('Run routine', stop => active.setPPToRoutine(taskName, moduleName, routineName, { stopIfRunning: stop }), entry) === CANCELLED) { return; }
-        } catch (e) {
-          if (!(await tryResolveMainCollision(active, taskName, moduleName, e, entry, mainHolders))) { throw e; }
-          await active.setPPToRoutine(taskName, moduleName, routineName);
+        const out = await sendMotion(entry, {
+          label: `Run ${moduleName}.${routineName}`, tier: 'motion', taskApplies: true, task: taskName,
+          sideEffects: [
+            ...(pre ? loadBullets(pre, taskName).slice(0, -1) : []),
+            `Sets the program pointer of ${taskName} to ${moduleName}.${routineName}.`,
+            ...(mainHolders.length ? [`Unloads ${mainHolders.join(' or ')} if the controller refuses the pointer move because it also declares PROC main().`] : []),
+            ...(needsMotors ? [`Turns the motors on (they are ${active.state.ctrlstate ?? 'off'}).`] : []),
+            startEffect(taskName, otherActive, `${moduleName}.${routineName}`),
+            ...heartbeatSideEffects(entry),
+          ],
+        }, async () => {
+          // If the module isn't loaded, load THIS file. resetPP false: the
+          // pointer goes to the routine below, in this task only.
+          if (pre && runDeps && filePath) {
+            // The restore point, the load and the failure flow: src/pushFlow.ts.
+            const step = await loadInsideSend(runDeps, pre, {
+              load: async () => (await withStopOffer('Load module', stop => active.loadProgram(filePath, taskName, { stopIfRunning: stop, resetPP: false }), entry)) !== CANCELLED,
+              reload: async file => (await withStopOffer('Restore module', stop => active.loadProgram(file, taskName, { stopIfRunning: stop, resetPP: false }), entry)) !== CANCELLED,
+            });
+            if (step !== 'done') { return step; }
+          }
+          // Set PP at the chosen routine, with the recovery from a `main`
+          // collision the dialog listed. The client no longer stops a running
+          // program on its own: the user is asked first.
+          try {
+            if (await withStopOffer('Run routine', stop => active.setPPToRoutine(taskName, moduleName, routineName, { stopIfRunning: stop }), entry) === CANCELLED) { return 'cancelled' as const; }
+          } catch (e) {
+            if (!(await tryResolveMainCollision(active, taskName, moduleName, e, entry, mainHolders, mod => withStopOffer(`Unload ${mod}`, stop => active.unloadModule(taskName, mod, { stopIfRunning: stop }), entry)))) { throw e; }
+            await active.setPPToRoutine(taskName, moduleName, routineName);
+          }
+          // Motors on only when the confirmation listed it.
+          if (needsMotors) {
+            try { await active.setMotorsOn(); }
+            catch (e) { showError('Motors On', e, entry); return 'failed' as const; }
+            // brief pause for motors to engage
+            await new Promise(r => setTimeout(r, 400));
+          }
+          await active.startRapid();
+          return 'started' as const;
+        });
+        if (out.sent && out.value === 'started') {
+          vscode.window.setStatusBarMessage(`▶ Running ${moduleName}.${routineName} in ${taskName} on ${entry.config.name}`, 4000);
         }
-
-        // Motors on only when the confirmation listed it.
-        if (needsMotors) {
-          try { await active.setMotorsOn(); }
-          catch (e) { showError('Motors On', e, entry); return; }
-          // brief pause for motors to engage
-          await new Promise(r => setTimeout(r, 400));
-        }
-
-        await active.startRapid();
-        vscode.window.setStatusBarMessage(`▶ Running ${moduleName}.${routineName} in ${taskName} on ${entry.config.name}`, 4000);
       } catch (e) { showError('Run routine', e, entry); }
     }),
 
@@ -3139,11 +3517,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       });
       if (!picked) { return; }
 
-      const ppAsk = whileRunningRequest('Set PP to routine', isRapidRunning(active.state.execstate), [`Moves the program pointer to ${moduleName}.${picked.name}.`]);
-      if (ppAsk && !await confirm(entry, ppAsk)) { return; }
+      // Always asks, naming the task; while RAPID runs the dialog says so first.
+      const tn = taskName, mn = moduleName;
       try {
-        if (await withStopOffer('Set PP to routine', stop => active.setPPToRoutine(taskName!, moduleName!, picked.name, { stopIfRunning: stop }), entry) === CANCELLED) { return; }
-        vscode.window.showInformationMessage(`✓ PP set to ${moduleName}.${picked.name} in ${taskName} on ${entry.config.name}. Click Start to run.`);
+        const out = await sendTo(entry,
+          programChangeRequest('Set PP to routine', isRapidRunning(active.state.execstate), 'change', [`Moves the program pointer to ${mn}.${picked.name}.`], tn),
+          () => withStopOffer('Set PP to routine', stop => active.setPPToRoutine(tn, mn, picked.name, { stopIfRunning: stop }), entry));
+        if (!out.sent || out.value === CANCELLED) { return; }
+        vscode.window.showInformationMessage(`✓ PP set to ${mn}.${picked.name} in ${tn} on ${entry.config.name}. Click Start to run.`);
       } catch (e: unknown) { showError('Set PP to routine', e, entry); }
     }),
 
@@ -3166,12 +3547,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       if (!taskName) { taskName = await taskForModule(entry, moduleName, 'Unload Module'); }
       if (!taskName) { return; }
-      const unloadAsk = whileRunningRequest('Unload module', isRapidRunning(entry.manager.state.execstate), [`Unloads ${moduleName} from ${taskName}.`]);
-      if (unloadAsk && !await confirm(entry, unloadAsk)) { return; }
+      // Always asks (disruptive: a module loaded at the FlexPendant has no copy here); while RAPID runs the dialog says so first.
+      const tn = taskName, mn = moduleName;
       try {
-        const tn = taskName, mn = moduleName;
-        if (await withStopOffer('Unload module', stop => entry.manager.unloadModule(tn, mn, { stopIfRunning: stop }), entry) === CANCELLED) { return; }
-        vscode.window.showInformationMessage(`✓ ${moduleName} unloaded from ${taskName} on ${entry.config.name}.`);
+        const out = await sendTo(entry,
+          programChangeRequest('Unload module', isRapidRunning(entry.manager.state.execstate), 'disruptive', [`Unloads ${mn} from ${tn}. A module loaded at the FlexPendant has no copy here.`], tn),
+          () => withStopOffer('Unload module', stop => entry.manager.unloadModule(tn, mn, { stopIfRunning: stop }), entry));
+        if (!out.sent || out.value === CANCELLED) { return; }
+        vscode.window.showInformationMessage(`✓ ${mn} unloaded from ${tn} on ${entry.config.name}.`);
       } catch (e: unknown) { showError('Unload module', e, entry); }
     }),
 
@@ -3297,7 +3680,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               const source = await active.getModuleSource(taskName, name);
               const filePath = vscode.Uri.joinPath(destFolder!, `${name}.mod`);
               await vscode.workspace.fs.writeFile(filePath, Buffer.from(source, 'utf8'));
-              await origins.record(filePath.fsPath, taskName, source, entry.id);
+              await recordWithBase(entry, filePath.fsPath, taskName, name, source);
               pulled.push(name);
             } catch (e) {
               failed.push({ name, err: e instanceof Error ? e.message : String(e) });
@@ -3327,12 +3710,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         filePath = (arg as { fsPath: string }).fsPath;
       } else {
         const editor = vscode.window.activeTextEditor;
-        if (editor) {
-          if (editor.document.isDirty) { await editor.document.save(); }
-          filePath = editor.document.fileName;
-        }
+        if (editor) { filePath = editor.document.fileName; }
       }
       if (!filePath) { vscode.window.showWarningMessage('No file to push. Open or right-click a .mod file.'); return; }
+      // The editor's unsaved changes first, whichever way the file was named: the file pushed is the one shown.
+      if (!(await savedFirst(filePath, 'Push Current File'))) { return; }
       if (!/\.(mod|sys|prg)$/i.test(filePath)) {
         vscode.window.showWarningMessage(`Cannot push ${path.basename(filePath)} - only .mod / .sys / .prg files.`);
         return;
@@ -3347,15 +3729,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const where = `${taskName} on ${entry.config.name}`;
 
       try {
-        // resetPP false: the program pointer moves only through its own ask
-        // after the push (src/ppAfterLoad.ts).
-        const r = await vscode.window.withProgress(
-          { location: vscode.ProgressLocation.Notification, title: `Pushing ${moduleName}${path.extname(filePath)} to ${where}…`, cancellable: false },
-          () => withStopOffer('Push current file', stop => active.loadProgram(filePath!, taskName, { stopIfRunning: stop, resetPP: false }), entry),
-        );
-        if (r === CANCELLED) { return; }
-        if (text !== undefined) { await origins.record(filePath, taskName, text, entry.id); }
-        offerPPToMain(entry, text ?? '', `✓ Pushed ${moduleName}${path.extname(filePath)} to ${where}.`);
+        // The program pointer moves only through its own ask after the push (src/ppAfterLoad.ts).
+        const pushed = await loadModuleFile(entry, taskName, filePath, 'Push Current File', 'Pushing');
+        if (!pushed) { return; }
+        offerPPToMain(entry, pushed.text ?? '', `✓ Pushed ${moduleName}${path.extname(filePath)} to ${where}.`);
       } catch (e: unknown) { showError('Push current file', e, entry); }
     }),
 
@@ -3427,7 +3804,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       try {
         const source = await entry.manager.getModuleSource(taskName, moduleName);
         const written = await openAsScratchFile(`${moduleName}.mod`, source);
-        if (written) { await origins.record(written, taskName, source, entry.id); }
+        if (written) { await recordWithBase(entry, written, taskName, moduleName, source); }
       } catch (e: unknown) {
         // Reading a module's text is a write on the controller: it writes the
         // module to a file on the controller and deletes it afterwards, so
@@ -3459,7 +3836,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       try {
         const { text, changeCount } = await entry.manager.getModuleText(taskName, moduleName);
         const written = await openAsScratchFile(`${moduleName}.mod`, text);
-        if (written) { await origins.record(written, taskName, text, entry.id); }
+        if (written) { await origins.record(written, taskName, text, entry.id, undefined, { text, changeCount }); }
         vscode.window.setStatusBarMessage(`${moduleName} in ${taskName} on ${entry.config.name}: controller change count ${changeCount}`, 8000);
       // 'View RAPID text', not 'View module text': the isWriteOp heuristic in
       // friendlyErrorMessage keys on 'module' and would give write-op advice
@@ -3487,10 +3864,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           pick: items => vscode.window.showQuickPick(items, { title: `Service routine in ${taskName} on ${entry.config.name}`, placeHolder: `Set the program pointer of ${taskName} to…` }),
           info: m => { vscode.window.showInformationMessage(m); },
           warn: m => { vscode.window.showWarningMessage(m); },
-          movePointer: async run => {
-            const ask = whileRunningRequest('Set PP to service routine', isRapidRunning(entry.manager.state.execstate), [`Moves the program pointer of ${taskName} to a service routine.`]);
-            if (ask && !await confirm(entry, ask)) { return false; }
-            return await withStopOffer('Set PP to service routine', run, entry) !== CANCELLED;
+          // Always asks, naming the task and the routine; the move itself is the one call below.
+          movePointer: async target => {
+            const where = target.moduleName ? `${target.routineName} (${target.moduleName})` : target.routineName;
+            const out = await sendTo(entry,
+              programChangeRequest('Set PP to service routine', isRapidRunning(entry.manager.state.execstate), 'change', [`Moves the program pointer of ${taskName} to the service routine ${where}.`], taskName),
+              () => withStopOffer('Set PP to service routine', stop => entry.manager.setPPToServiceRoutine(taskName, target.routineName, target.moduleName, { stopIfRunning: stop }), entry));
+            return out.sent && out.value !== CANCELLED;
           },
         });
       } catch (e: unknown) {
@@ -3513,7 +3893,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         validateInput: v => v.trim() ? undefined : 'Required',
       });
       if (!name) { return; }
-      await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Creating backup ${name}…` }, async (p) => {
+      await sendTo(entry, {
+        label: 'Create Backup', tier: 'change', taskApplies: false,
+        sideEffects: [`Creates the backup ${name} in the BACKUP volume of the controller. The controller writes it in a job that can take a minute or more.`],
+      }, () => vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Creating backup ${name} on ${entry.config.name}…` }, async (p) => {
         try {
           await entry.manager.createBackup(name);
           // Poll the backup state - backups can take 30-90 s on real hardware.
@@ -3530,9 +3913,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             if (seenBusy || i >= 3) { break; }
           }
           if (failed) { throw new Error(`The controller reports the backup state "${failed}".`); }
-          vscode.window.showInformationMessage(`✓ Backup "${name}" created.`);
+          vscode.window.showInformationMessage(`✓ Backup "${name}" created on ${entry.config.name}.`);
         } catch (e: unknown) { showError('Create backup', e, entry); }
-      });
+      }));
     }),
 
     tracedCommand('abbRobot.restoreBackup', async (arg?: unknown) => {
@@ -3554,18 +3937,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           name = pick.label;
         } catch (e) { showError('List backups', e, entry); return; }
       }
-      const ok = await confirm(entry, {
-        label: `Restore backup "${name}"`, tier: 'disruptive',
-        sideEffects: [
-          'Replaces the controller\'s configuration and programs with the backup.',
-          'Keeps the backup on the controller: the restore asks the controller not to delete it.',
-          'The controller restarts afterwards; the connection drops until it is back.',
-        ],
-      });
-      if (!ok) { return; }
+      const chosen = name;
       try {
-        await entry.manager.restoreBackup(name);
-        vscode.window.showInformationMessage(`✓ Restore of "${name}" initiated. Controller will restart.`);
+        const out = await sendTo(entry, {
+          label: `Restore backup "${chosen}"`, tier: 'disruptive', taskApplies: false,
+          sideEffects: [
+            'Replaces the controller\'s configuration and programs with the backup.',
+            'Keeps the backup on the controller: the restore asks the controller not to delete it.',
+            'The controller restarts afterwards; the connection drops until it is back.',
+          ],
+        }, async () => { await entry.manager.restoreBackup(chosen); });
+        if (out.sent) { vscode.window.showInformationMessage(`✓ Restore of "${chosen}" started on ${entry.config.name}. The controller will restart.`); }
       } catch (e: unknown) { showError('Restore backup', e, entry); }
     }),
 
@@ -3602,9 +3984,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!entry.manager.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
       const tool = await vscode.window.showInputBox({ prompt: 'Tool name (existing persistent tooldata)', placeHolder: 'tool0' });
       if (!tool) { return; }
-      const mu = entry.manager.state.mechunits[0] ?? 'ROB_1';
-      try { await entry.manager.setActiveTool(mu, tool); vscode.window.showInformationMessage(`✓ Active tool: ${tool}`); }
-      catch (e: unknown) { showError('Set active tool', e, entry); }
+      const mu = await mechunitFor(entry, 'Set Active Tool');
+      if (!mu) { return; }
+      try {
+        const out = await sendTo(entry, {
+          label: 'Set Active Tool', tier: 'change', taskApplies: false,
+          sideEffects: [`Makes ${tool} the active tool of ${mu}. The next motion uses it.`],
+        }, () => entry.manager.setActiveTool(mu, tool));
+        if (out.sent) { vscode.window.showInformationMessage(`✓ Active tool of ${mu}: ${tool} on ${entry.config.name}`); }
+      } catch (e: unknown) { showError('Set active tool', e, entry); }
     }),
 
     tracedCommand('abbRobot.setActiveWobj', async () => {
@@ -3612,9 +4000,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!entry.manager.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
       const wobj = await vscode.window.showInputBox({ prompt: 'Work object name (existing persistent wobjdata)', placeHolder: 'wobj0' });
       if (!wobj) { return; }
-      const mu = entry.manager.state.mechunits[0] ?? 'ROB_1';
-      try { await entry.manager.setActiveWobj(mu, wobj); vscode.window.showInformationMessage(`✓ Active wobj: ${wobj}`); }
-      catch (e: unknown) { showError('Set active wobj', e, entry); }
+      const mu = await mechunitFor(entry, 'Set Active Work Object');
+      if (!mu) { return; }
+      try {
+        const out = await sendTo(entry, {
+          label: 'Set Active Work Object', tier: 'change', taskApplies: false,
+          sideEffects: [`Makes ${wobj} the active work object of ${mu}. The next motion uses it.`],
+        }, () => entry.manager.setActiveWobj(mu, wobj));
+        if (out.sent) { vscode.window.showInformationMessage(`✓ Active work object of ${mu}: ${wobj} on ${entry.config.name}`); }
+      } catch (e: unknown) { showError('Set active wobj', e, entry); }
     }),
 
     // ─── CFG write ─────────────────────────────────────────────────────────
@@ -3679,17 +4073,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showErrorMessage(`CFG not written - document is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
         return;
       }
-      const ok = await confirm(entry, {
-        label: `Write ${target.domain}/${target.type}/${target.instance}`, tier: 'change',
-        sideEffects: [
-          `Writes ${Object.keys(attrs).length} attribute${Object.keys(attrs).length === 1 ? '' : 's'} of the instance to the controller.`,
-          'Most CFG changes need a controller restart to take effect.',
-        ],
-      });
-      if (!ok) { return; }
       try {
-        await entry.manager.setCfgInstance(target.domain, target.type, target.instance, attrs);
-        vscode.window.showInformationMessage(`✓ Wrote ${target.domain}/${target.type}/${target.instance} to "${robotName}". Most CFG changes need a controller restart to take effect.`);
+        const out = await sendTo(entry, {
+          label: `Write ${target.domain}/${target.type}/${target.instance}`, tier: 'change', taskApplies: false,
+          sideEffects: [
+            `Writes ${Object.keys(attrs).length} attribute${Object.keys(attrs).length === 1 ? '' : 's'} of the instance to the controller.`,
+            'Most CFG changes need a controller restart to take effect.',
+          ],
+        }, async () => { await entry.manager.setCfgInstance(target.domain, target.type, target.instance, attrs); });
+        if (out.sent) { vscode.window.showInformationMessage(`✓ Wrote ${target.domain}/${target.type}/${target.instance} to "${robotName}". Most CFG changes need a controller restart to take effect.`); }
       } catch (e: unknown) { showError('Write CFG instance', e, entry); }
     }),
     // Stop tracking once the scratch document is closed.
@@ -3716,8 +4108,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (!attrsJson) { return; }
         // A read returns rdonly and instanceid next to the attributes; a copy of one must not send them.
         const { attrs, removed } = writableAttributes(JSON.parse(attrsJson) as Record<string, unknown>);
-        await m.createCfgInstance(domain, type, instance, attrs);
-        vscode.window.showInformationMessage(`✓ Created ${domain}/${type}/${instance}.${removed.length ? ` Left out ${removed.join(', ')}: the controller reports them on a read; they are not attributes to write.` : ''}`);
+        const out = await sendTo(entry, {
+          label: `Create CFG instance ${domain}/${type}/${instance}`, tier: 'disruptive', taskApplies: false,
+          sideEffects: [
+            `Adds the instance ${instance} to ${domain}/${type} in the controller's configuration, with ${Object.keys(attrs).length} attribute${Object.keys(attrs).length === 1 ? '' : 's'}.`,
+            'Most configuration changes take effect after a controller restart.',
+          ],
+        }, () => m.createCfgInstance(domain, type, instance, attrs));
+        if (!out.sent) { return; }
+        vscode.window.showInformationMessage(`✓ Created ${domain}/${type}/${instance} on ${entry.config.name}.${removed.length ? ` Left out ${removed.join(', ')}: the controller reports them on a read; they are not attributes to write.` : ''}`);
       } catch (e: unknown) { showError('Create CFG instance', e, entry); }
     }),
 
@@ -3735,16 +4134,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const instances = await m.listCfgInstances(domain, type);
         const instance = await vscode.window.showQuickPick(instances, { placeHolder: 'Pick instance to remove' });
         if (!instance) { return; }
-        const ok = await confirm(entry, {
-          label: `Remove CFG instance ${domain}/${type}/${instance}`, tier: 'disruptive',
+        const out = await sendTo(entry, {
+          label: `Remove CFG instance ${domain}/${type}/${instance}`, tier: 'disruptive', taskApplies: false,
           sideEffects: [
             `Deletes the instance ${instance} of ${domain}/${type} from the controller's configuration. It cannot be undone.`,
             'Most configuration changes take effect after a controller restart.',
           ],
-        });
-        if (!ok) { return; }
-        await m.removeCfgInstance(domain, type, instance);
-        vscode.window.showInformationMessage(`✓ Removed ${domain}/${type}/${instance}.`);
+        }, () => m.removeCfgInstance(domain, type, instance));
+        if (!out.sent) { return; }
+        vscode.window.showInformationMessage(`✓ Removed ${domain}/${type}/${instance} on ${entry.config.name}.`);
       } catch (e: unknown) { showError('Remove CFG instance', e, entry); }
     }),
 
@@ -3765,17 +4163,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         { placeHolder: 'Load action' },
       );
       if (!action) { return; }
-      const ok = await confirm(entry, {
-        label: CFG_LOAD_LABEL, tier: 'disruptive',
-        sideEffects: [
-          `Loads ${filepath} into the configuration (${action.label}): ${action.detail}.`,
-          'Most configuration changes take effect after a controller restart.',
-        ],
-      });
-      if (!ok) { return; }
       try {
-        await entry.manager.loadCfgFile(filepath, action.label as 'add' | 'replace' | 'add-with-reset');
-        vscode.window.showInformationMessage(`✓ Loaded ${filepath} (${action.label}). A controller restart is usually required.`);
+        const out = await sendTo(entry, {
+          label: CFG_LOAD_LABEL, tier: 'disruptive', taskApplies: false,
+          sideEffects: [
+            `Loads ${filepath} into the configuration (${action.label}): ${action.detail}.`,
+            'Most configuration changes take effect after a controller restart.',
+          ],
+        }, () => entry.manager.loadCfgFile(filepath, action.label as 'add' | 'replace' | 'add-with-reset'));
+        if (out.sent) { vscode.window.showInformationMessage(`✓ Loaded ${filepath} (${action.label}) on ${entry.config.name}. A controller restart is usually required.`); }
       } catch (e: unknown) { showError(CFG_LOAD_LABEL, e, entry, cfgLoadNextStep(e)); }
     }),
 
@@ -3791,8 +4187,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           value: `$HOME/${domain}.cfg`,
         });
         if (!filepath) { return; }
-        await entry.manager.saveCfgFile(domain, filepath);
-        vscode.window.showInformationMessage(`✓ Saved ${domain} domain to ${filepath}.`);
+        const out = await sendTo(entry, {
+          label: 'Save CFG File', tier: 'change', taskApplies: false,
+          sideEffects: [`Saves the ${domain} configuration domain to ${filepath} on the controller. An existing file at that path is overwritten.`],
+        }, () => entry.manager.saveCfgFile(domain, filepath));
+        if (out.sent) { vscode.window.showInformationMessage(`✓ Saved ${domain} domain to ${filepath} on ${entry.config.name}.`); }
       } catch (e: unknown) { showError('Save CFG file', e, entry); }
     }),
 
@@ -3824,11 +4223,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const sizeStr = await vscode.window.showInputBox({ title: 'DIPC message size', prompt: dipcSizePrompt(gen), validateInput: v => validateDipcSize(v, gen) });
       if (sizeStr === undefined) { return; }
       try {
-        await entry.manager.createDipcQueue(name, {
+        const out = await sendTo(entry, {
+          label: 'Create DIPC Queue', tier: 'change', taskApplies: false,
+          sideEffects: [`Creates the DIPC queue ${name} on the controller: ${countStr} messages${sizeStr.trim() ? ` of up to ${sizeStr.trim()} bytes` : ''}.`],
+        }, () => entry.manager.createDipcQueue(name, {
           maxsize: sizeStr.trim() ? Number(sizeStr) : undefined,
           maxmessages: Number(countStr),
-        });
-        vscode.window.showInformationMessage(`✓ DIPC queue ${name} created.`);
+        }));
+        if (out.sent) { vscode.window.showInformationMessage(`✓ DIPC queue ${name} created on ${entry.config.name}.`); }
       } catch (e: unknown) { showError('Create DIPC queue', e, entry); }
     }),
 
@@ -3845,8 +4247,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const payload = await vscode.window.showInputBox({ prompt: `Message payload (${type})` });
       if (payload === undefined) { return; }
       try {
-        await entry.manager.sendDipcMessage(queue, payload, type as 'string' | 'num' | 'dnum' | 'bool');
-        vscode.window.showInformationMessage(`✓ Sent to ${queue}: ${payload}`);
+        const out = await sendTo(entry, {
+          label: 'Send DIPC Message', tier: 'change', taskApplies: false,
+          sideEffects: [`Sends a ${type} message to the DIPC queue ${queue}: ${payload}. Whatever reads the queue receives it.`],
+        }, () => entry.manager.sendDipcMessage(queue, payload, type as 'string' | 'num' | 'dnum' | 'bool'));
+        if (out.sent) { vscode.window.showInformationMessage(`✓ Sent to ${queue} on ${entry.config.name}: ${payload}`); }
       } catch (e: unknown) { showError('Send DIPC message', e, entry); }
     }),
 
@@ -3858,9 +4263,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ? await vscode.window.showQuickPick(queues.map(q => q.name), { placeHolder: 'Pick a queue' })
         : await vscode.window.showInputBox({ prompt: 'Queue name' });
       if (!queue) { return; }
+      // A consuming read: the message leaves the queue. A write, behind the dialog, and refused in Watch only.
       try {
-        const msg = await entry.manager.readDipcMessage(queue, 5000);
-        vscode.window.showInformationMessage(dipcMessageText(msg));
+        const out = await sendTo(entry, {
+          label: 'Read DIPC Message', tier: 'change', taskApplies: false,
+          sideEffects: [`Takes the next message off the queue ${queue}; whatever reads the queue will not get it.`],
+        }, () => entry.manager.readDipcMessage(queue, 5000));
+        if (out.sent) { vscode.window.showInformationMessage(dipcMessageText(out.value)); }
       } catch (e: unknown) { showError('Read DIPC message', e, entry); }
     }),
 
@@ -3872,8 +4281,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const pick = await vscode.window.showQuickPick(queues.map(q => q.name), { placeHolder: 'Queue to remove' });
       if (!pick) { return; }
       try {
-        await entry.manager.removeDipcQueue(pick);
-        vscode.window.showInformationMessage(`✓ Removed queue ${pick}.`);
+        const out = await sendTo(entry, {
+          label: 'Remove DIPC Queue', tier: 'disruptive', taskApplies: false,
+          sideEffects: [`Removes the DIPC queue ${pick} from the controller, with any messages waiting in it.`],
+        }, () => entry.manager.removeDipcQueue(pick));
+        if (out.sent) { vscode.window.showInformationMessage(`✓ Removed queue ${pick} on ${entry.config.name}.`); }
       } catch (e: unknown) { showError('Remove DIPC queue', e, entry); }
     }),
 
@@ -3897,8 +4309,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!dest) { return; }
       try {
         // The controller answers 202 and writes the archive in a job after that.
-        await entry.manager.compressPath(source, dest);
-        vscode.window.showInformationMessage(`✓ Compress started on the controller: ${source} → ${dest}. The archive is there when the job ends.`);
+        const out = await sendTo(entry, {
+          label: 'Compress Path', tier: 'change', taskApplies: false,
+          sideEffects: [`Compresses ${source} into ${dest} on the controller, in a job the controller runs after it answers. An existing archive at that path is overwritten.`],
+        }, () => entry.manager.compressPath(source, dest));
+        if (out.sent) { vscode.window.showInformationMessage(`✓ ${entry.config.name}: Compress started on the controller: ${source} → ${dest}. The archive is there when the job ends.`); }
       } catch (e: unknown) { showError('Compress', e, entry); }
     }),
 
@@ -3952,8 +4367,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!(await taskName)) { return; }
       const name = (await taskName)!;
       try {
-        await entry.manager.activateRapidTask(name);
-        vscode.window.showInformationMessage(`✓ Task ${name} activated.`);
+        const out = await sendTo(entry, {
+          label: 'Activate task', tier: 'disruptive', taskApplies: true, task: name,
+          sideEffects: [`Activates ${name}: the next start runs it too.`],
+        }, () => entry.manager.activateRapidTask(name));
+        if (out.sent) { vscode.window.showInformationMessage(`✓ Task ${name} activated on ${entry.config.name}.`); }
       } catch (e: unknown) { showError('Activate task', e, entry); }
     }),
 
@@ -3964,26 +4382,40 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!(await taskName)) { return; }
       const name = (await taskName)!;
       try {
-        await entry.manager.deactivateRapidTask(name);
-        vscode.window.showInformationMessage(`✓ Task ${name} deactivated.`);
+        const out = await sendTo(entry, {
+          label: 'Deactivate task', tier: 'disruptive', taskApplies: true, task: name,
+          sideEffects: [`Deactivates ${name}: the next start leaves it out.`],
+        }, () => entry.manager.deactivateRapidTask(name));
+        if (out.sent) { vscode.window.showInformationMessage(`✓ Task ${name} deactivated on ${entry.config.name}.`); }
       } catch (e: unknown) { showError('Deactivate task', e, entry); }
     }),
 
+    // The dialog lists the tasks whose state changes; with none to change, nothing is sent.
     tracedCommand('abbRobot.activateAllTasks', async () => {
       const entry = activeEntry(multi);
       if (!entry.manager.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
+      const tasks = entry.manager.state.tasks.filter(t => !t.active).map(t => t.name);
+      if (tasks.length === 0) { vscode.window.showInformationMessage(`Every task of ${entry.config.name} is active already. Nothing sent.`); return; }
       try {
-        await entry.manager.activateAllRapidTasks();
-        vscode.window.showInformationMessage('✓ All RAPID tasks activated.');
+        const out = await sendTo(entry, {
+          label: 'Activate all tasks', tier: 'disruptive', taskApplies: true, tasks,
+          sideEffects: [`Activates ${tasks.join(', ')}: the next start runs every task.`],
+        }, () => entry.manager.activateAllRapidTasks());
+        if (out.sent) { vscode.window.showInformationMessage(`✓ All RAPID tasks activated on ${entry.config.name}: ${tasks.join(', ')}.`); }
       } catch (e: unknown) { showError('Activate all tasks', e, entry); }
     }),
 
     tracedCommand('abbRobot.deactivateAllTasks', async () => {
       const entry = activeEntry(multi);
       if (!entry.manager.state.connected) { vscode.window.showWarningMessage('Connect first.'); return; }
+      const tasks = activeTasks(entry.manager.state);
+      if (tasks.length === 0) { vscode.window.showInformationMessage(`No task of ${entry.config.name} is active. Nothing sent.`); return; }
       try {
-        await entry.manager.deactivateAllRapidTasks();
-        vscode.window.showInformationMessage('✓ All RAPID tasks deactivated.');
+        const out = await sendTo(entry, {
+          label: 'Deactivate all tasks', tier: 'disruptive', taskApplies: true, tasks,
+          sideEffects: [`Deactivates ${tasks.join(', ')}: the next start runs no task.`],
+        }, () => entry.manager.deactivateAllRapidTasks());
+        if (out.sent) { vscode.window.showInformationMessage(`✓ All RAPID tasks deactivated on ${entry.config.name}: ${tasks.join(', ')}.`); }
       } catch (e: unknown) { showError('Deactivate all tasks', e, entry); }
     }),
 
@@ -4050,25 +4482,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       );
       if (!trustLevel) { return; }
 
-      const createOk = await confirm(entry, {
-        label: `Create RAPID task ${taskName}`, tier: 'disruptive',
-        sideEffects: [
-          `Writes a new ${type.label} task instance to SYS/CAB_TASKS in the configuration.`,
-          'The task appears only after the controller restarts.',
-        ],
-      });
-      if (!createOk) { return; }
-
       try {
-        await m.createCfgInstance('SYS', 'CAB_TASKS', taskName, {
+        const out = await sendTo(entry, {
+          label: `Create RAPID task ${taskName}`, tier: 'disruptive', taskApplies: false,
+          sideEffects: [
+            `Writes a new ${type.label} task instance to SYS/CAB_TASKS in the configuration.`,
+            'The task appears only after the controller restarts.',
+          ],
+        }, () => m.createCfgInstance('SYS', 'CAB_TASKS', taskName, {
           Name: taskName,
           Type: type.label,
           TrustLevel: trustLevel,
           Entry: entryRoutine,
           MotionTask: motionTask.label === 'Yes' ? 'TRUE' : 'FALSE',
-        });
+        }));
+        if (!out.sent) { return; }
         const restart = await vscode.window.showInformationMessage(
-          `✓ Task ${taskName} written to CFG. Controller restart required to load it.`,
+          `✓ Task ${taskName} written to CFG on ${entry.config.name}. Controller restart required to load it.`,
           'Restart Now', 'Restart Later',
         );
         if (restart === 'Restart Now') {
@@ -4105,7 +4535,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           // file in $HOME (a system module such as BASE has none there).
           let saved: string | undefined;
           await saveModuleText(entry.manager, task, name, text => { fs.writeFileSync(saveUri.fsPath, text, 'utf8'); saved = text; });
-          if (saved !== undefined) { await origins.record(saveUri.fsPath, task, saved, entry.id); }
+          if (saved !== undefined) { await origins.record(saveUri.fsPath, task, saved, entry.id, undefined, { text: saved }); }
           const open = await vscode.window.showInformationMessage(`✓ ${fileName} saved from ${task} on ${entry.config.name}.`, 'Open');
           if (open === 'Open') { vscode.window.showTextDocument(saveUri); }
         } catch (e: unknown) { showError(MODULE_SAVE_LABEL, e, entry); }
@@ -4136,8 +4566,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!input) { return; }
       const parts = parseClockInput(input);
       if (!parts) { return; }
-      try { await entry.manager.setControllerClock(...parts); vscode.window.showInformationMessage(clockSetDone(input)); }
-      catch (e: unknown) { showError('Set clock', e, entry); }
+      try {
+        const out = await sendTo(entry, {
+          label: 'Set Controller Clock', tier: 'disruptive', taskApplies: false,
+          sideEffects: [`Sets the controller's clock to ${input}. Event log times and file dates follow it.`],
+        }, () => entry.manager.setControllerClock(...parts));
+        if (out.sent) { vscode.window.showInformationMessage(`${clockSetDone(input)} (${entry.config.name})`); }
+      } catch (e: unknown) { showError('Set clock', e, entry); }
     }),
 
     tracedCommand('abbRobot.restartController', async (arg?: unknown) => {
@@ -4149,14 +4584,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         { label: 'B-Start',  value: 'bstart'  as const, description: 'Boot from last auto-save (crash recovery)' },
       ], { title: 'Restart Controller' });
       if (!choice) { return; }
-      const ok = await confirm(entry, {
-        label: choice.label, tier: 'disruptive',
-        sideEffects: restartSideEffects(choice.value),
-      });
-      if (!ok) { return; }
       try {
-        await entry.manager.restartController(choice.value);
-        vscode.window.showInformationMessage('Restart command sent. Disconnecting…');
+        const out = await sendTo(entry, {
+          label: choice.label, tier: 'disruptive', taskApplies: false,
+          sideEffects: restartSideEffects(choice.value),
+        }, () => entry.manager.restartController(choice.value));
+        if (!out.sent) { return; }
+        vscode.window.showInformationMessage(`Restart command sent to ${entry.config.name}. Disconnecting…`);
         await endConnection(multi, entry.id);
       } catch (e: unknown) { showError('Restart', e, entry); }
     }),
@@ -4171,24 +4605,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     tracedCommand('abbRobot.clearEventLog', async () => {
       const entry = activeEntry(multi);
-      const ok = await confirm(entry, {
-        label: 'Clear event log', tier: 'disruptive',
-        sideEffects: ['Deletes the messages of event log domain 0 (the common log) on the controller. They cannot be read back afterwards.'],
-      });
-      if (!ok) { return; }
-      try { await entry.manager.clearEventLog(); elogProvider.refresh(); vscode.window.showInformationMessage('Event log cleared.'); }
-      catch (e: unknown) { showError('Clear event log', e, entry); }
+      try {
+        const out = await sendTo(entry, {
+          label: 'Clear event log', tier: 'disruptive', taskApplies: false,
+          sideEffects: ['Deletes the messages of event log domain 0 (the common log) on the controller. They cannot be read back afterwards.'],
+        }, () => entry.manager.clearEventLog());
+        if (!out.sent) { return; }
+        elogProvider.refresh(); vscode.window.showInformationMessage(`Event log cleared on ${entry.config.name}.`);
+      } catch (e: unknown) { showError('Clear event log', e, entry); }
     }),
 
     tracedCommand('abbRobot.clearAllEventLogs', async () => {
       const entry = activeEntry(multi);
-      const ok = await confirm(entry, {
-        label: 'Clear all event logs', tier: 'disruptive',
-        sideEffects: ['Deletes the messages of every event log domain on the controller. They cannot be read back afterwards.'],
-      });
-      if (!ok) { return; }
-      try { await entry.manager.clearAllEventLogs(); elogProvider.refresh(); vscode.window.showInformationMessage('All event logs cleared.'); }
-      catch (e: unknown) { showError('Clear all logs', e, entry); }
+      try {
+        const out = await sendTo(entry, {
+          label: 'Clear all event logs', tier: 'disruptive', taskApplies: false,
+          sideEffects: ['Deletes the messages of every event log domain on the controller. They cannot be read back afterwards.'],
+        }, () => entry.manager.clearAllEventLogs());
+        if (!out.sent) { return; }
+        elogProvider.refresh(); vscode.window.showInformationMessage(`All event logs cleared on ${entry.config.name}.`);
+      } catch (e: unknown) { showError('Clear all logs', e, entry); }
     }),
 
     tracedCommand('abbRobot.exportEventLog', async () => {
@@ -4261,8 +4697,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const parent = fullPath.slice(0, lastSlash);
       const name   = fullPath.slice(lastSlash + 1).trim();
       if (!name) { vscode.window.showErrorMessage('Directory name is empty'); return; }
-      try { await entry.manager.createDirectory(parent, name); vscode.window.showInformationMessage(`Directory '${name}' created in ${parent}.`); filesProvider.refresh(); }
-      catch (e: unknown) { showError('Create directory', e, entry); }
+      try {
+        const out = await sendTo(entry, {
+          label: 'Create Directory', tier: 'change', taskApplies: false,
+          sideEffects: [`Creates the directory ${name} in ${parent} on the controller.`],
+        }, () => entry.manager.createDirectory(parent, name));
+        if (!out.sent) { return; }
+        vscode.window.showInformationMessage(`Directory '${name}' created in ${parent} on ${entry.config.name}.`); filesProvider.refresh();
+      } catch (e: unknown) { showError('Create directory', e, entry); }
     }),
 
     tracedCommand('abbRobot.downloadControllerFile', async (arg: unknown) => {
@@ -4302,7 +4744,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       try {
         const text = await entry.manager.readFile(node.path);
-        await openAsScratchFile(node.entry.name, text);
+        if (looksLikeText(node.entry.name, text)) { await openAsScratchFile(node.entry.name, text); return; }
+        // Not text: what the client read goes to the scratch folder and VS Code picks the viewer; the note says it is not an exact copy.
+        const saved = await scratchFileFor(node.entry.name, text);
+        if (!saved) { return; }
+        await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(saved.path));
+        vscode.window.showInformationMessage(binaryFileNote(node.entry.name));
       } catch (e: unknown) { showError('Open controller file', e, entry); }
     }),
 
@@ -4321,16 +4768,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const isDir = node.entry.type === 'dir';
       const kind  = isDir ? 'folder' : 'file';
-      const ok = await confirm(entry, {
-        label: `Delete ${kind} "${node.entry.name}"`, tier: 'disruptive',
-        sideEffects: [isDir
-          ? `Deletes the folder ${node.path} and everything inside it from the controller.`
-          : `Deletes the file ${node.path} from the controller.`],
-      });
-      if (!ok) { return; }
       try {
-        await entry.manager.deleteControllerFile(node.path);
-        vscode.window.showInformationMessage(`${kind} '${node.entry.name}' deleted.`);
+        const out = await sendTo(entry, {
+          label: `Delete ${kind} "${node.entry.name}"`, tier: 'disruptive', taskApplies: false,
+          sideEffects: [isDir
+            ? `Deletes the folder ${node.path} and everything inside it from the controller.`
+            : `Deletes the file ${node.path} from the controller.`],
+        }, () => entry.manager.deleteControllerFile(node.path));
+        if (!out.sent) { return; }
+        vscode.window.showInformationMessage(`${kind} '${node.entry.name}' deleted on ${entry.config.name}.`);
         filesProvider.refresh();
       } catch (e: unknown) {
         showError(`Delete ${kind}`, e, entry);
@@ -4360,8 +4806,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       });
       if (!newName || newName === node.entry.name) { return; }
       try {
-        await entry.manager.renameFile(node.path, newName);
-        vscode.window.showInformationMessage(`${kind} renamed to '${newName}'.`);
+        const out = await sendTo(entry, {
+          label: `Rename ${kind} "${node.entry.name}"`, tier: 'change', taskApplies: false,
+          sideEffects: [`Renames the ${kind} ${node.path} to ${newName}, in the same directory on the controller.`],
+        }, () => entry.manager.renameFile(node.path, newName));
+        if (!out.sent) { return; }
+        vscode.window.showInformationMessage(`${kind} renamed to '${newName}' on ${entry.config.name}.`);
         filesProvider.refresh();
       } catch (e: unknown) { showError(`Rename ${kind}`, e, entry); }
     }),
@@ -4401,13 +4851,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         value = await vscode.window.showInputBox({ title: `Write ${signalName}`, value: currentValue, validateInput: v => isNaN(+v) ? 'Must be a number' : undefined });
         if (value === undefined) { return; }
       }
-      const ok = await confirm(entry, {
-        label: `Write ${signalName}`, tier: 'change',
-        sideEffects: [`Sets the signal ${signalName} to ${value}${currentValue !== undefined ? ` (now ${currentValue})` : ''}. Whatever the signal drives sees the new value at once.`],
-      });
-      if (!ok) { return; }
-      try { await entry.manager.writeIoSignal(signalName!, value); ioProvider.refresh(); vscode.window.showInformationMessage(`${signalName} = ${value}`); }
-      catch (e: unknown) { showError('Write signal', e, entry); }
+      const signalValue = value;
+      try {
+        const out = await sendTo(entry, {
+          label: `Write ${signalName}`, tier: 'change', taskApplies: false,
+          sideEffects: [`Sets the signal ${signalName} to ${signalValue}${currentValue !== undefined ? ` (now ${currentValue})` : ''}. Whatever the signal drives sees the new value at once.`],
+        }, () => entry.manager.writeIoSignal(signalName!, signalValue));
+        if (!out.sent) { return; }
+        ioProvider.refresh(); vscode.window.showInformationMessage(`✓ ${signalName} = ${signalValue} on ${entry.config.name}`);
+      } catch (e: unknown) { showError('Write signal', e, entry); }
     }),
 
     // Also the one-click toggle of a DO in the I/O tree (IoTreeProvider).
@@ -4425,13 +4877,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       const next = signal.lvalue === '1' ? '0' : '1';
-      const ok = await confirm(entry, {
-        label: `Toggle ${signal.name}`, tier: 'change',
-        sideEffects: [`Sets the signal ${signal.name} from ${signal.lvalue} to ${next}. Whatever the signal drives sees the new value at once.`],
-      });
-      if (!ok) { return; }
       try {
-        await entry.manager.writeIoSignal(signal.name, next);
+        const out = await sendTo(entry, {
+          label: `Toggle ${signal.name}`, tier: 'change', taskApplies: false,
+          sideEffects: [`Sets the signal ${signal.name} from ${signal.lvalue} to ${next}. Whatever the signal drives sees the new value at once.`],
+        }, () => entry.manager.writeIoSignal(signal.name, next));
+        if (!out.sent) { return; }
         // Keep the caller's Signal object honest: pinned search rows hold a
         // fixed copy that the state refresh never touches, and the NEXT
         // toggle computes its write from this very lvalue.
@@ -4612,6 +5063,33 @@ function taskBox(entry: RobotEntry): { prompt: string; value: string; placeHolde
 }
 
 /**
+ * The mechanical unit a command acts on (src/mechunitResolver.ts): the one unit
+ * the controller lists, the person's pick when it lists several, or the name
+ * the person types when the list is unknown (not read yet, or the read
+ * failed). Undefined when the pick or the box is dismissed. There is no
+ * default name.
+ */
+async function mechunitFor(entry: RobotEntry, purpose: string): Promise<string | undefined> {
+  return resolveMechunit({
+    pick: (items, title, placeHolder) => vscode.window.showQuickPick(items, { title, placeHolder }),
+    input: (title, prompt, validate) => vscode.window.showInputBox({ title, prompt, validateInput: validate, ignoreFocusOut: true }),
+  }, robotLabel(confirmRobotOf(entry)), entry.manager.state, purpose);
+}
+
+/**
+ * The tasks an execution-wide write (Start RAPID, Reset RAPID, PP to Main)
+ * acts on: every active task. Undefined, with a warning, when none is read
+ * yet, so the dialog never names an empty list.
+ */
+function executionTasks(entry: RobotEntry, purpose: string): string[] | undefined {
+  const tasks = activeTasks(entry.manager.state);
+  if (tasks.length > 0) { return tasks; }
+  const reason = entry.manager.state.tasks.length === 0 ? 'its task list has not been read yet' : 'it has no active task';
+  vscode.window.showWarningMessage(`${purpose} on ${robotLabel(confirmRobotOf(entry))}: nothing sent, ${reason}. Refresh the robot, then try again.`);
+  return undefined;
+}
+
+/**
  * After a successful Push or Load: the success message, and for a file with
  * PROC main an offer to move the program pointer to main, behind its own
  * confirmation naming the robot and the tasks it moves (src/ppAfterLoad.ts).
@@ -4621,12 +5099,14 @@ function offerPPToMain(entry: RobotEntry, text: string, success: string): void {
   void afterLoad({
     info: m => { vscode.window.showInformationMessage(m); },
     offer: (m, button) => vscode.window.showInformationMessage(m, button).then(c => c === button),
-    confirm: request => confirm(entry, request),
-    resetRapid: async () => {
-      try {
-        await entry.manager.resetRapid();
-        vscode.window.showInformationMessage(`✓ PP moved to main on ${entry.config.name}.`);
-      } catch (e: unknown) { showError('PP to Main', e, entry); }
+    moveToMain: async request => {
+      const out = await sendTo(entry, request, async () => {
+        try {
+          await entry.manager.resetRapid();
+          vscode.window.showInformationMessage(`✓ PP moved to main: ${(request.tasks ?? []).join(', ')} on ${entry.config.name}.`);
+        } catch (e: unknown) { showError('PP to Main', e, entry); }
+      });
+      return out.sent;
     },
   }, text, success, activeTasks(entry.manager.state));
 }
@@ -4860,10 +5340,10 @@ function showError(label: string, e: unknown, entry?: RobotEntry, note?: string)
   });
 }
 
-/** Release the locks this tool's own session holds on that robot; never another holder's. */
+/** Release the locks this tool's own session holds on that robot; never another holder's. A reducing write: no dialog. */
 async function releaseOwnLocks(entry: RobotEntry): Promise<void> {
   try {
-    await entry.manager.releaseMastershipAll();
+    await sendReducingTo(entry, { label: 'Release own locks', exemptFromWatchOnly: true }, () => entry.manager.releaseMastershipAll());
     vscode.window.showInformationMessage(`Released this tool's own locks on ${entry.config.name}. Now retry the operation.`);
   } catch (releaseErr) {
     vscode.window.showWarningMessage(
@@ -4936,7 +5416,14 @@ async function requestRmmpInteractive(entry: RobotEntry, opts: { level: RmmpLeve
   }
   let result: RmmpResult;
   try {
-    result = await vscode.window.withProgress(
+    // A change on the controller's side: the request stands at the FlexPendant until the operator answers it.
+    const out = await sendTo(entry, {
+      label: `Request ${level} privileges (RMMP)`, tier: 'change', taskApplies: false,
+      sideEffects: [
+        `Asks the controller for ${level} privileges for this session (RobotWare 6 and 7). The operator grants or denies it at the FlexPendant.`,
+        'The request can be cancelled from the progress notice while it waits.',
+      ],
+    }, () => vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: `Requesting ${level} privileges (RMMP) on ${entry.config.name}`, cancellable: true },
       async (progress, token) => {
         const ac = new AbortController();
@@ -4946,7 +5433,9 @@ async function requestRmmpInteractive(entry: RobotEntry, opts: { level: RmmpLeve
           onPending: () => progress.report({ message: 'waiting for the operator to grant it at the FlexPendant…' }),
         });
       },
-    );
+    ));
+    if (!out.sent) { return; }
+    result = out.value;
   } catch (e) {
     showError('Request RMMP', e, entry);
     return;
@@ -4995,12 +5484,19 @@ async function requestRmmpInteractive(entry: RobotEntry, opts: { level: RmmpLeve
  * kept or the person cancelled.
  */
 async function openAsScratchFile(name: string, content: string): Promise<string | undefined> {
+  const saved = await scratchFileFor(name, content);
+  if (!saved) { return undefined; }
+  const doc = await vscode.workspace.openTextDocument(saved.path);
+  await vscode.window.showTextDocument(doc, { preview: false });
+  return saved.written ? saved.path : undefined;
+}
+
+/** The scratch file for a controller file: written, or the local one kept at the person's choice; undefined when cancelled. */
+async function scratchFileFor(name: string, content: string): Promise<{ path: string; written: boolean } | undefined> {
   const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const scratchDir = wsRoot ?? path.join(require('os').homedir(), '.abb-rws-extension', 'scratch');
   fs.mkdirSync(scratchDir, { recursive: true });
   const destPath = path.join(scratchDir, name);
-  let written = false;
-
   if (fs.existsSync(destPath)) {
     const choice = await vscode.window.showInformationMessage(
       `${name} already exists at ${destPath}.`,
@@ -5012,16 +5508,12 @@ async function openAsScratchFile(name: string, content: string): Promise<string 
     if (!choice || choice === 'Cancel') { return undefined; }
     if (choice === 'Overwrite with Controller Version') {
       fs.writeFileSync(destPath, content, 'utf8');
-      written = true;
+      return { path: destPath, written: true };
     }
-    // Either way (open local or overwrite-and-open), open the destPath.
-  } else {
-    fs.writeFileSync(destPath, content, 'utf8');
-    written = true;
+    return { path: destPath, written: false };
   }
-  const doc = await vscode.workspace.openTextDocument(destPath);
-  await vscode.window.showTextDocument(doc, { preview: false });
-  return written ? destPath : undefined;
+  fs.writeFileSync(destPath, content, 'utf8');
+  return { path: destPath, written: true };
 }
 
 /**
@@ -5056,19 +5548,6 @@ async function extractTaskName(arg: unknown, candidates: string[]): Promise<stri
  * original op). Returns false if not a collision, user cancelled, or
  * resolution failed - caller should surface the original error.
  */
-/** The loaded program modules of a task that define `main` (reads only). */
-async function modulesWithMain(robot: RobotManager, taskName: string): Promise<string[]> {
-  const sysMods = new Set(['BASE', 'user', 'DPUSER', 'DPBASE']);
-  const withMain: string[] = [];
-  for (const m of robot.state.modules.filter(x => !sysMods.has(x))) {
-    try {
-      const routines = await robot.listRoutines(taskName, m);
-      if (routines.some(r => r.name.toLowerCase() === 'main')) { withMain.push(m); }
-    } catch { /* skip - module might be in a state we can't query */ }
-  }
-  return withMain;
-}
-
 /**
  * `approved`: modules a confirmation the user already answered named as the
  * ones that would be unloaded; a single such module is unloaded without
@@ -5080,7 +5559,8 @@ async function tryResolveMainCollision(
   currentModule: string,
   err: unknown,
   entry: RobotEntry,
-  approved: string[] = [],
+  approved: string[],
+  unload: (mod: string) => Promise<unknown>,
 ): Promise<boolean> {
   if (!isSemanticError(err)) { return false; }
 
@@ -5089,17 +5569,9 @@ async function tryResolveMainCollision(
   if (withMain.length < 2) { return false; }   // not a main collision after all
 
   const others = withMain.filter(m => m !== currentModule);
+  // The one other module, or the person's pick among several.
   let toUnload: string | undefined;
-
-  if (others.length === 1 && approved.includes(others[0])) {
-    toUnload = others[0];
-  } else if (others.length === 1) {
-    const choice = await vscode.window.showWarningMessage(
-      `On ${robotLabel(confirmRobotOf(entry))}: two modules each define PROC main(): "${currentModule}" and "${others[0]}". ` +
-      `RAPID needs exactly one. Unload "${others[0]}"?`,
-      { modal: false }, 'Unload', 'Cancel',
-    );
-    if (choice !== 'Unload') { return false; }
+  if (others.length === 1) {
     toUnload = others[0];
   } else {
     const pick = await vscode.window.showQuickPick(
@@ -5109,14 +5581,27 @@ async function tryResolveMainCollision(
     if (!pick || pick.label === currentModule) { return false; }
     toUnload = pick.label;
   }
-
+  const mod = toUnload;
+  // The caller's dialog listed this unload (Run routine): no second ask.
+  // Otherwise its own disruptive ask, naming the task, both modules and the robot.
+  const covered = others.length === 1 && approved.includes(mod);
   try {
-    const mod = toUnload;
-    if (await withStopOffer(`Unload ${mod}`, stop => robot.unloadModule(taskName, mod, { stopIfRunning: stop }), entry) === CANCELLED) { return false; }
-    vscode.window.setStatusBarMessage(`✓ Unloaded "${toUnload}" - retrying…`, 3000);
+    if (covered) {
+      if (await unload(mod) === CANCELLED) { return false; }
+    } else {
+      const out = await sendTo(entry, {
+        label: `Unload ${mod}`, tier: 'disruptive', taskApplies: true, task: taskName,
+        sideEffects: [
+          `Two modules in ${taskName} declare PROC main(): ${currentModule} and ${mod}. RAPID needs exactly one, so the controller refused the pointer move.`,
+          `Unloads ${mod} from ${taskName}; ${currentModule} stays. A module loaded at the FlexPendant has no copy here.`,
+        ],
+      }, () => unload(mod));
+      if (!out.sent || out.value === CANCELLED) { return false; }
+    }
+    vscode.window.setStatusBarMessage(`✓ Unloaded "${mod}" from ${taskName} on ${entry.config.name} - retrying…`, 3000);
     return true;
   } catch (e) {
-    showError(`Unload ${toUnload}`, e, entry);
+    showError(`Unload ${mod}`, e, entry);
     return false;
   }
 }

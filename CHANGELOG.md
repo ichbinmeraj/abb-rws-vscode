@@ -2,6 +2,108 @@
 
 ## Unreleased
 
+## 1.5.0 - 2026-10-30 - Every write asks, and real controllers start watch-only
+
+### Changed
+
+- **Every command that writes to a controller asks before it sends, and the question
+  names the robot.** When the write goes to one task, it names the task too. When it acts
+  on the whole execution, it lists the tasks. Reset RAPID, PP to Main, Set Execution Cycle,
+  Write RAPID Variable, Load Program from File, Push Current File, Unload Module, Set PP to
+  Routine, Call Service Routine, Activate and Deactivate Task, Create Backup, Set Active
+  Tool and Work Object, Create CFG Instance, Save CFG File, the DIPC commands (Read DIPC
+  Message too, since it takes the message off the queue), Compress Path, Set Controller
+  Clock, Create Directory, Rename File and Request Remote Control sent at once before. A cancelled question sends nothing. Every write in the extension runs
+  inside one guard, and a source test fails on a write outside it.
+- **Real controllers start watch-only.** RAPID Live reads what kind of controller it is
+  connected to. A virtual controller is set to Program and operate. A real controller, or
+  one that does not say, is set to Watch only. In Watch only RAPID Live reads and sends no
+  writes, and it requests no mastership, write access or RMMP. The status bar and the
+  Robots view show the mode. Set Robot Mode switches it for one robot, and the question
+  names the robot.
+- **Robots saved before this release ask once.** On the next connect to a real controller,
+  RAPID Live asks whether to watch or to program and operate. No answer is preselected.
+  Closing the question leaves the robot watch-only.
+- Pull All Modules, Diff Current File with Controller and Open Loaded Module Source still
+  save a temporary copy to the controller's TEMP volume and delete it, in Watch only too.
+  They change no program, configuration or state. Stop RAPID and Motors Off are refused in
+  Watch only, so a click on the status bar cannot stop a cell you chose to watch.
+- The Program view runs a fixed list of commands. Anything else its page asks for is
+  refused and logged.
+- Set PP to Routine, Unload Module and Call Service Routine asked a question when RAPID was
+  running and sent at once when it was not. They always ask now.
+- Set Speed Ratio no longer shows 100 % as the current ratio when it has not been read. The
+  question says the value is unread, and while RAPID runs it is asked as a change that may
+  speed a motion up.
+- Jog names the mechanical unit it moves, in the confirmation and in the request. When the
+  controller has another unit selected for jogging, the client selects the named one first,
+  and the selection stays on the FlexPendant. The confirmation says that the Joint or
+  Cartesian setting only chooses the axis labels, and it is asked again when the unit or
+  the labels change.
+- Teleport Robot, Jog, Set Active Tool and Set Active Work Object no longer assume the unit is
+  ROB_1. With one mechanical unit they use it. With several they ask which. When the list is
+  unknown, because it has not been read yet or the read failed, they ask for the unit's name
+  and fill in none.
+- Requires abb-rws-client 1.5.3, whose mechanical-unit list stays empty when the read fails
+  instead of naming ROB_1. A file that is not valid UTF-8 is refused by the client
+  before anything is sent.
+
+### Added
+
+- **Push Current File and Load Program from File protect the controller's copy.** Before a
+  module is replaced, RAPID Live reads the module from the controller. If it differs from
+  what you pulled, nothing is sent and a message says so, with the diff a click away and a
+  Push anyway button. If RAPID Live has no record of pulling the file, it stops the same
+  way once and then keeps a record. The base is the program text as the controller holds
+  it, with each PERS at its declared value, so a PERS that moves while the program runs is
+  not a change. Once the push is confirmed, the copy is read once more and
+  a change made while the dialog was open stops the push. Before the load is sent,
+  the controller's copy is saved as a restore point in the extension's storage folder,
+  outside your workspace. A cancelled or refused push leaves none. A load the controller
+  takes without loading the module named, or that lists it under a numbered name beside a
+  module that stayed, counts as failed too. A .prg file is refused: it is a program, not
+  a module. If the load fails, RAPID
+  Live reads the module again and tells the cases apart. Still there as it was: nothing was
+  lost. Gone: it offers to reload the saved copy as a separate question. There but changed:
+  the offer says the reload replaces what is loaded now and saves that copy first. Not
+  readable: the saved copy is named. One message reports both steps.
+- **Files with non-ASCII characters are refused**, and the message names the line, the
+  column and the byte. A controller reads a module file as single-byte text, so a UTF-8
+  character is stored wrong, and RobotWare 7 and 8 save it back double-encoded (checked on
+  6.16.03, 7.21.4 and 8.2.1 virtual controllers). Replace the character and push again. A control character is refused
+  the same way, so a UTF-16 file saved without a byte order mark cannot pass as text, and
+  a file with CR line ends has its lines counted as the editor shows them. A file whose name is not its
+  declared module name is refused as well: the controller loads a file under its file name
+  and unloads a loaded module of that name first, so the two must agree.
+- Set PP and Run this routine from the editor save the editor's unsaved changes before they
+  load the file, as Push Current File does, so the routine named is in the module loaded. A
+  save that does not go through stops the command.
+- Set Robot Mode and Restore Module from Restore Point commands. A restore saves the module
+  loaded under that name at the time as a restore point of its own before it is replaced.
+
+### Fixed
+
+- Motors On on RobotWare 8 now shows the motion-control line and the Allow Motion Control
+  button, as Start, Run this routine and Jog do.
+
+Checked on RobotWare 6.16.03, 7.21.4 and 8.2.1 virtual controllers, the 8.2.1 one with two
+tasks, each run from a real VS Code with the dialogs answered by a script. On each build a
+watch-only connect sent reads and nothing else, no mastership, RMMP or control-station
+request, and the lock state read through a second session was the same before and after it
+and empty after the disconnect. Motors Off was refused in Watch only, and the refusal named
+the robot. In Program and operate a probe module was pushed, pushed again as nothing to
+push, changed through a second session so that the next push stopped with the diff and Push
+anyway, restored from its restore point with the replaced copy saved as a point of its own,
+and loaded from a file the controller refused, so that the saved copy was offered back and
+reloaded. A Latin-1 file and a UTF-16 file were refused before any request. On 6.16.03 the
+controller took the refused file as a module of another name, and the push now reads the
+module list back and treats that as a failed load too. Every confirmation named the robot,
+and the task writes named their task. Each controller was read back as found. Not checked
+on a controller: Motors On refused for motion control on RobotWare 8, because that
+controller sat in a guard stop and refused the motors for the Reset it needs at the
+FlexPendant, before and after Allow Motion Control went through, and the Jog, Teleport and
+active tool dialogs with a unit the person types in.
+
 ## 1.4.1 - 2026-10-30 - Every task command goes to the task you meant
 
 ### Fixed

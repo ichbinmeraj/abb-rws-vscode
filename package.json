@@ -1,7 +1,7 @@
 {
   "name": "abb-rws",
   "displayName": "RAPID Live for ABB Robots",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "VS Code extension that connects to live ABB IRC5 (RobotWare 6) and OmniCore (RobotWare 7/8) controllers; runs alongside ABB's own RAPID extension. Tested on RobotStudio virtual controllers (RW 8.2.1, 7.21.4, 6.16.03). RAPID language server (hover signatures, autocomplete, signature help, go-to-definition, inlay hints with live values, CodeLens), git-style push/pull/diff workflow for .mod files, multi-robot management, real-time WebSocket subscriptions, IK + FK, file/IO/event-log access, variable watch panel, dual RWS 1.0 + 2.0 protocol support.",
   "publisher": "merajsafari",
   "author": {
@@ -252,6 +252,12 @@
         "icon": "$(file-text)"
       },
       {
+        "command": "abbRobot.setRobotMode",
+        "title": "Set Robot Mode (Watch only / Program and operate)…",
+        "category": "ABB Robot",
+        "icon": "$(eye)"
+      },
+      {
         "command": "abbRobot.removeRobot",
         "title": "Remove Robot…",
         "category": "ABB Robot",
@@ -351,6 +357,11 @@
         "title": "Load Program from File…",
         "category": "ABB Robot",
         "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "abbRobot.restoreModule",
+        "title": "Restore Module from Restore Point…",
+        "category": "ABB Robot"
       },
       {
         "command": "abbRobot.unloadModule",
@@ -1244,6 +1255,11 @@
           "group": "1_connection@2"
         },
         {
+          "command": "abbRobot.setRobotMode",
+          "when": "view == abbRobot.robots && viewItem =~ /^robot\\.(connected|disconnected)/",
+          "group": "1_connection@3"
+        },
+        {
           "command": "abbRobot.withdrawMotionControl",
           "when": "view == abbRobot.robots && viewItem =~ /^robot\\.connected(\\.active)?\\.motion$/",
           "group": "2_motion@1"
@@ -1402,7 +1418,7 @@
     "package": "npx @vscode/vsce package"
   },
   "dependencies": {
-    "abb-rws-client": "file:vendor/abb-rws-client-1.5.1.tgz"
+    "abb-rws-client": "file:vendor/abb-rws-client-1.5.3.tgz"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",

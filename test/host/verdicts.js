@@ -81,6 +81,30 @@ function verdicts(result, log) {
   const texts = name => ui(name).filter(u => ['info', 'warning', 'error'].includes(u.kind)).map(u => u.text);
   const v = {};
 
+  // ── W1: every write command on a watch-only robot, against the stub controller ──
+  if (result.w1) {
+    const w = result.w1;
+    const connectErrors = texts('W1 connect').filter(t => /failed/i.test(t));
+    v['W1 connect'] = connectErrors.length ? `FAIL: ${connectErrors[0]}` : !w.identityRead ? 'FAIL: the client never read /ctrl/identity' : 'PASS';
+    v['W1 mode question'] = w.mode === 'real' || w.mode === 'none'
+      ? (!w.askOnce ? 'FAIL: the mode question was not asked at the connect'
+        : !String(w.askOnce.text).startsWith(`How should RAPID Live treat ${ROBOT_NAME} (`) ? `FAIL: the question does not name ${ROBOT_NAME}: ${w.askOnce.text}`
+        : !(w.askOnce.buttons || []).includes('Watch only') || !(w.askOnce.buttons || []).includes(`Program and operate on ${ROBOT_NAME}`) ? `FAIL: buttons ${(w.askOnce.buttons || []).join(' | ')}`
+        : `PASS (${w.askOnce.answered || 'dismissed'})`)
+      : 'skipped: a virtual controller is not asked';
+    const refusals = result.ui.filter(u => /^W1 abbRobot\./.test(u.step) && u.kind === 'warning' && /not sent: .* is watch-only\./.test(u.text || ''));
+    const unnamed = refusals.filter(u => !u.text.includes(`${ROBOT_NAME} (`));
+    v['W1 refusals'] = refusals.length < 20 ? `FAIL: only ${refusals.length} commands were refused as watch-only (expected 20 or more)`
+      : unnamed.length ? `FAIL: a refusal does not name ${ROBOT_NAME}: ${unnamed[0].text}`
+      : `PASS (${refusals.length} refusals, each naming ${ROBOT_NAME})`;
+    const writes = w.writes || [];
+    v['W1 writes'] = writes.length ? `FAIL: ${writes.length} write(s) reached the stub: ${writes.slice(0, 5).join('; ')}` : `PASS (no POST, PUT or DELETE in ${w.requests || 0} requests)`;
+    const traces = log.filter(l => l.category === 'write');
+    v['W1 trace'] = traces.length ? `FAIL: ${traces.length} write trace line(s) logged: ${traces.slice(0, 3).map(l => l.msg).join('; ')}` : 'PASS (no write trace line)';
+    const threw = (w.commands || []).filter(c => c.ok === false);
+    v['W1 commands'] = threw.length ? `FAIL: ${threw.length} command(s) threw: ${threw.slice(0, 5).map(c => `${c.id}: ${c.thrown}`).join('; ')}` : `PASS (${(w.commands || []).length} commands ran)`;
+  }
+
   v['connect'] = texts('connect').some(t => /failed/i.test(t)) ? 'FAIL: connect refused' : 'PASS';
 
   // Step A: lock with the test PIN, a mismatched PIN refused, the right PIN unlocks.
@@ -480,6 +504,59 @@ function uatVerdicts(result, log) {
       if (o.signal && f.signal && o.signal.lvalue !== f.signal.lvalue) { diffs.push(`${o.signal.name} ${o.signal.lvalue} -> ${f.signal.lvalue}`); }
       if (f.backups && f.backups.length) { diffs.push(`backups left: ${f.backups.join(',')}`); }
       v['U4 restored'] = diffs.length ? `FAIL: not back as found: ${diffs.join('; ')}` : `PASS (speed ${f.speedRatio}, cycle ${f.execCycle}, state ${f.ctrlstate}, execution ${f.execstate}, modules ${(f.modules || []).join(',')}, ${f.signal ? `${f.signal.name} ${f.signal.lvalue}, ` : ''}program pointer ${f.programPointer}; no ZZ_ACC backup left; cleanup: ${(u4.cleanup || []).join('; ') || 'nothing to undo'})`;
+    }
+  }
+
+  // ── L1: the 1.5.0 live checks ──
+  const l1 = result.l1;
+  if (l1) {
+    if (l1.abort) { v['L1 aborted'] = `FAIL: ${l1.abort}`; }
+    for (const r of l1.rows || []) {
+      const errs = errorsOf(r.name);
+      const refusalRe = r.expectRefusal ? new RegExp(r.expectRefusal, 'i') : null;
+      if (r.skipped) { v[r.name] = `SKIPPED (${r.row}): ${r.skipped}`; continue; }
+      if (r.threw) { v[r.name] = `FAIL (${r.row}): the command threw: ${r.threw}`; continue; }
+      if (errs.length && !refusalRe) { v[r.name] = `FAIL (${r.row}): ${shortList(errs, 2)}; ${r.detail}`; continue; }
+      if (refusalRe) {
+        v[r.name] = r.ok && errs.every(t => refusalRe.test(t)) ? `REFUSED (${r.row}): as expected (${r.why}); ${r.detail}` : `FAIL (${r.row}): ${r.detail}`;
+        continue;
+      }
+      v[r.name] = r.ok ? `PASS (${r.row}; ${r.detail})` : `FAIL (${r.row}): ${r.detail}`;
+    }
+    // The connect in Watch only: the lock state unchanged, and nothing in the trace that takes a lock or writes.
+    if (l1.windows && l1.windows.connect && l1.locks && l1.locks.before && l1.locks.afterWatchConnect) {
+      const from = l1.windows.connect.start, to = (l1.windows.idle || l1.windows.connect).end;
+      const reqs = log.filter(l => l.category === 'http.req' && l.ts >= from && l.ts <= to).map(l => l.data || {});
+      // RWS 2.0 subscribes and searches with POSTs that change nothing on the controller (as the stub's writes() leaves them out).
+      const writes = reqs.filter(q => q.method && q.method !== 'GET' && !/^\/subscription/.test(q.path || '') && !/search/i.test(q.path || '')).map(q => `${q.method} ${q.path}`);
+      const locks = reqs.filter(q => /mastership|rmmp|controlstation|writeaccess/i.test(q.path || '')).map(q => `${q.method} ${q.path}`);
+      const same = JSON.stringify(l1.locks.before) === JSON.stringify(l1.locks.afterWatchConnect);
+      v['L1 watch connect locks'] = !same ? `FAIL: the lock state changed over the watch-only connect: ${JSON.stringify(l1.locks.before)} -> ${JSON.stringify(l1.locks.afterWatchConnect)}`
+        : writes.length ? `FAIL: ${writes.length} write(s) in the connect window: ${writes.slice(0, 5).join('; ')}`
+        : locks.length ? `FAIL: a lock request in the connect window: ${locks.slice(0, 5).join('; ')}`
+        : `PASS (${reqs.length} requests, all GET, none on a mastership, RMMP or control-station path; locks ${JSON.stringify(l1.locks.afterWatchConnect)})`;
+    }
+    // The confirmations: every modal confirmation of an L1 step names the robot, and the task where one applies.
+    // A confirmation's title is "<label>[ in <task>] on <robot>"; a refusal ("<label> not sent: …") is not one.
+    const modals = result.ui.filter(u => /^L1 /.test(u.step) && u.kind === 'warning' && u.modal && /^(Push Current File|Restore module \S+|Set Speed Ratio|Motors On|Unload module|Allow Motion Control)( in \S+)? on /.test(u.text || ''));
+    const unnamed = modals.filter(u => !u.text.includes(`${ROBOT_NAME} (`));
+    const taskless = modals.filter(u => /^(Push Current File|Restore module |Unload module)/.test(u.text) && l1.task && !u.text.includes(` in ${l1.task} on `));
+    v['L1 confirmations'] = modals.length < 4 ? `FAIL: only ${modals.length} confirmation(s) recorded (expected 4 or more)`
+      : unnamed.length ? `FAIL: a confirmation does not name ${ROBOT_NAME}: ${unnamed[0].text}`
+      : taskless.length ? `FAIL: a task write does not name ${l1.task}: ${taskless[0].text}`
+      : `PASS (${modals.length} confirmations, each naming ${ROBOT_NAME}${l1.task ? `, the task writes naming ${l1.task}` : ''})`;
+    if (l1.final && l1.original && l1.final.ctrlstate !== undefined) {
+      const o = l1.original, f = l1.final;
+      const diffs = [];
+      for (const k of ['speedRatio', 'ctrlstate', 'opmode', 'execstate', 'programPointer']) { if (`${o[k]}` !== `${f[k]}`) { diffs.push(`${k} ${o[k]} -> ${f[k]}`); } }
+      if (JSON.stringify(o.modules) !== JSON.stringify(f.modules)) { diffs.push(`modules ${o.modules} -> ${f.modules}`); }
+      v['L1 restored'] = diffs.length ? `FAIL: not back as found: ${diffs.join('; ')}` : `PASS (speed ${f.speedRatio}, state ${f.ctrlstate}, execution ${f.execstate}, modules ${(f.modules || []).join(',')}, program pointer ${f.programPointer}; cleanup: ${(l1.cleanup || []).join('; ') || 'nothing to undo'})`;
+    }
+    if (l1.locks && l1.locks.end) {
+      const e = l1.locks.end;
+      const held = e.kind === 'write-access' ? (e.held === true && e.heldByName === 'abb-rws-client' ? `write access still held by "${e.heldByName}"` : '')
+        : ['rapid', 'cfg', 'motion'].filter(d => e[d] && !/^nomaster/.test(e[d]) && e[d] !== 'not read').map(d => `${d} mastership ${e[d]}`).join(', ');
+      v['L1 end locks'] = held ? `FAIL: after the disconnect: ${held}` : `PASS (after the disconnect: ${JSON.stringify(e)})`;
     }
   }
 
